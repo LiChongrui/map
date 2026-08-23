@@ -1,0 +1,14 @@
+{
+"type": "FeatureCollection",
+"name": "上阳宫门",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "name": 0, "门": "含露门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.398819220978083, 34.663607967385964 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "芬芳门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.430043265187734, 34.685392316501165 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "元武门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.421700957683768, 34.684824208672403 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "通仙门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.425067340649562, 34.658098740124565 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "仙洛门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.433292037789741, 34.661185328058558 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "提象门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.437816834853479, 34.666667409459016 ] ] } },
+{ "type": "Feature", "properties": { "name": 0, "门": "星躔门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.43659972526622, 34.676482070767129 ] ] } }
+]
+}

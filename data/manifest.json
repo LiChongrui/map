@@ -1,0 +1,17 @@
+{
+  "dataset": {
+    "隋唐洛阳城": [
+      { "file": "里坊.geojson", "name": "里坊" },
+      { "file": "市.geojson", "name": "市" },
+      { "file": "紫薇城.geojson", "name": "紫薇城" },
+      { "file": "太微城.geojson", "name": "太微城" },
+      { "file": "外郭城墙.geojson", "name": "外郭城墙" },
+      { "file": "桥.geojson", "name": "桥" },
+      { "file": "城门.geojson", "name": "城门" },
+      { "file": "上阳宫.geojson", "name": "上阳宫" },
+      { "file": "上阳宫城墙.geojson", "name": "上阳宫城墙" },
+      { "file": "上阳宫门.geojson", "name": "上阳宫门" }
+    ]
+  },
+  "updated": "2026-08-21"
+}

@@ -1,0 +1,33 @@
+{
+"type": "FeatureCollection",
+"name": "城门",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "name": "永通门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.51563885460375, 34.641994851090914 ] ] } },
+{ "type": "Feature", "properties": { "name": "建春门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.513335352462235, 34.658069073519712 ] ] } },
+{ "type": "Feature", "properties": { "name": "上东门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.509176624949404, 34.68705205039695 ] ] } },
+{ "type": "Feature", "properties": { "name": "安喜门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.490975960890736, 34.700021469520728 ] ] } },
+{ "type": "Feature", "properties": { "name": "微安门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.470751823770698, 34.697500576737824 ] ] } },
+{ "type": "Feature", "properties": { "name": "德猷门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.466966455379023, 34.697029217857335 ] ] } },
+{ "type": "Feature", "properties": { "name": "龙光门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.451251872547743, 34.695066631228144 ] ] } },
+{ "type": "Feature", "properties": { "name": "阊阖门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.441387488487862, 34.686945610394055 ] ] } },
+{ "type": "Feature", "properties": { "name": "嘉豫门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.441816274578017, 34.683664485454742 ] ] } },
+{ "type": "Feature", "properties": { "name": "雒南门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.442586623933437, 34.677769032167348 ] ] } },
+{ "type": "Feature", "properties": { "name": "宣辉门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.442944214226486, 34.675032112723734 ] ] } },
+{ "type": "Feature", "properties": { "name": "右掖门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.449166204517667, 34.671024810876645 ] ] } },
+{ "type": "Feature", "properties": { "name": "端门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.454772951467035, 34.671564893424957 ] ] } },
+{ "type": "Feature", "properties": { "name": "左掖门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.461234562939708, 34.672099752850201 ] ] } },
+{ "type": "Feature", "properties": { "name": "承福门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.469587337428962, 34.67835820906388 ] ] } },
+{ "type": "Feature", "properties": { "name": "宣仁门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.47198252862664, 34.684475258318272 ] ] } },
+{ "type": "Feature", "properties": { "name": "含嘉门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.467758585068353, 34.690673968766674 ] ] } },
+{ "type": "Feature", "properties": { "name": "圆壁南门", "类型": "内城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.451900867317505, 34.69052833236762 ] ] } },
+{ "type": "Feature", "properties": { "name": "曜仪门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.452099249807617, 34.689281739016501 ] ] } },
+{ "type": "Feature", "properties": { "name": "玄武门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.452510320082467, 34.686679720592586 ] ] } },
+{ "type": "Feature", "properties": { "name": "应天门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.453975812807585, 34.676371824008697 ] ] } },
+{ "type": "Feature", "properties": { "name": "明德门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.457518648225061, 34.676695689094785 ] ] } },
+{ "type": "Feature", "properties": { "name": "长乐门", "类型": "宫城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.450459755830877, 34.676051240929738 ] ] } },
+{ "type": "Feature", "properties": { "name": "长夏门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.485273094982759, 34.634211304390902 ] ] } },
+{ "type": "Feature", "properties": { "name": "定鼎门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.460160188441677, 34.632461417995614 ] ] } },
+{ "type": "Feature", "properties": { "name": "厚载门", "类型": "外郭城门" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ 112.448763891754794, 34.631665584088665 ] ] } }
+]
+}
