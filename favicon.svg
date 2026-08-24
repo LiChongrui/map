@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200">
+  <!-- 圆角矩形底板（透明背景） -->
+  <rect x="2" y="2" width="96" height="96" rx="16" ry="16" fill="#f4e8d1" stroke="#8b5a2b" stroke-width="2"/>
+
+  <!-- 地图折叠线 -->
+  <line x1="33" y1="18" x2="33" y2="82" stroke="#d4b895" stroke-width="1.5"/>
+  <line x1="67" y1="18" x2="67" y2="82" stroke="#d4b895" stroke-width="1.5"/>
+
+  <!-- 历史路线（虚线） -->
+  <path d="M 23 67 Q 35 50 45 55 T 65 40 T 80 30" fill="none" stroke="#a0522d" stroke-width="2" stroke-dasharray="3,3"/>
+
+  <!-- 路线起点标记 -->
+  <circle cx="23" cy="67" r="3" fill="#8b5a2b"/>
+
+  <!-- 路线终点标记（小旗帜） -->
+  <path d="M 80 30 L 80 20 L 88 24 L 80 28" fill="#a0522d"/>
+
+  <!-- 罗盘底座 -->
+  <circle cx="50" cy="50" r="12" fill="none" stroke="#8b5a2b" stroke-width="1.5"/>
+  <circle cx="50" cy="50" r="9" fill="none" stroke="#8b5a2b" stroke-width="0.5"/>
+
+  <!-- 罗盘指针（北/南） -->
+  <polygon points="50,38 53,50 47,50" fill="#a0522d"/> <!-- 北（红褐） -->
+  <polygon points="50,62 53,50 47,50" fill="#d4b895"/> <!-- 南（浅色） -->
+
+  <!-- 罗盘指针（东/西） -->
+  <polygon points="62,50 50,47 50,53" fill="#d4b895"/> <!-- 东 -->
+  <polygon points="38,50 50,47 50,53" fill="#d4b895"/> <!-- 西 -->
+
+  <!-- 罗盘中心点 -->
+  <circle cx="50" cy="50" r="2" fill="#8b5a2b"/>
+</svg>

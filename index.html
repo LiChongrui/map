@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>洛老师的历史地图集</title>
+    <title>【洛】历史地图集</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
     <!-- ===== Leaflet CSS ===== -->
     <link rel="stylesheet" href="js/vendor/leaflet.css" />
@@ -19,10 +20,10 @@
     <header class="navbar">
         <div class="navbar-brand">
             <div class="brand-icon">
-                <i class="fas fa-map-marked-alt"></i>
+                <img src="favicon.svg" alt="洛老师的历史地图集" />
             </div>
             <div class="brand-text">
-                <span class="brand-title">洛老师的历史地图集</span>
+                <span class="brand-title">【洛】历史地图集</span>
             </div>
         </div>
         <div class="navbar-actions">
@@ -45,18 +46,21 @@
     <div id="controlPanel" class="control-panel">
         <!-- 面板头部 -->
         <div class="panel-header">
-            <div class="panel-header-left">
-                <h3><i class="fas fa-circle-plus"></i> 添加数据集</h3>
-                <div id="datasetAdd" class="dataset-select dataset-add" data-tooltip="选择要添加的数据集">
-                    <button type="button" class="dataset-select-trigger" aria-haspopup="listbox" aria-expanded="false">
-                        <i class="fas fa-plus"></i>
-                        <span class="dataset-select-value">选择数据集</span>
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                    <div class="dataset-select-menu" role="listbox"></div>
+            <div class="panel-header-title">
+                <span class="panel-title-icon"><i class="fas fa-layer-group"></i></span>
+                <div class="panel-title-text">
+                    <h3>图层面板</h3>
+                    <span class="panel-title-sub">管理地图图层与数据集</span>
                 </div>
             </div>
             <div class="panel-header-actions">
+                <div id="datasetAdd" class="dataset-select" data-tooltip="添加数据集到地图">
+                    <button type="button" class="dataset-add-btn" aria-haspopup="dialog" aria-expanded="false">
+                        <i class="fas fa-plus"></i>
+                        <span>添加数据集</span>
+                    </button>
+                    <div class="dataset-select-menu" role="dialog" aria-label="选择要加载的数据集"></div>
+                </div>
                 <button type="button" class="panel-btn-icon" id="panelCollapse" aria-label="关闭图层面板" data-tooltip="关闭面板">
                     <i class="fas fa-times"></i>
                 </button>
@@ -83,9 +87,6 @@
                 </button>
                 <button type="button" class="toolbar-btn" id="collapseAllGroups" data-tooltip="折叠所有数据集" aria-label="折叠所有数据集">
                     <i class="fas fa-angles-up"></i>
-                </button>
-                <button type="button" class="toolbar-btn" id="removeAllDatasets" data-tooltip="删除所有数据集" aria-label="删除所有数据集">
-                    <i class="fas fa-trash-can"></i>
                 </button>
             </div>
         </div>
@@ -127,6 +128,21 @@
     <!-- ===== Toast 通知 ===== -->
     <div id="toastContainer" class="toast-container"></div>
 
+    <!-- ===== 统一应用弹窗（确认 / 信息共用） ===== -->
+    <div id="appModal" class="app-modal-overlay" hidden>
+        <div class="app-modal" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+            <div class="app-modal-head">
+                <span class="app-modal-icon"><i class="fas fa-circle-question"></i></span>
+                <h4 class="app-modal-title" id="appModalTitle">提示</h4>
+            </div>
+            <div class="app-modal-body" id="appModalMessage"></div>
+            <div class="app-modal-footer">
+                <button type="button" class="modal-btn" id="appModalCancel">取消</button>
+                <button type="button" class="modal-btn primary" id="appModalConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== 图层样式配置弹窗 ===== -->
     <div id="styleModal" class="style-modal-overlay" hidden>
         <div class="style-modal" role="dialog" aria-modal="true" aria-labelledby="styleModalTitle">
@@ -159,6 +175,7 @@
 
     <!-- ===== 自定义 JS ===== -->
     <script src="js/config.js"></script>
+    <script src="js/measureTools.js"></script>
     <script src="js/dataScanner.js"></script> 
     <script src="js/mapManager.js"></script>
     <script src="js/layerManager.js"></script>

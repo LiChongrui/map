@@ -6,6 +6,8 @@
 
     // ---------- 初始化地图 ----------
     MapManager.init('map');
+    // 测量工具（测距 / 测面积，左上角）
+    MeasureTools.init(MapManager.getMap());
     // 点击地图空白处（未点中要素）移除图层高亮
     MapManager.getMap().on('click', () => LayerManager.clearLayerHighlight());
     UIManager.init();
@@ -20,7 +22,7 @@
                 hasValid = true;
             }
         });
-        if (hasValid) MapManager.fitBounds(bounds, { padding: [50, 50] });
+        if (hasValid) MapManager.fitBounds(bounds);
     }
 
     // ---------- 初始化数据 ----------

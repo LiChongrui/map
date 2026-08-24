@@ -2,33 +2,43 @@
   "datasets": [
     {
       "name": "隋唐洛阳-城",
+      "info": "隋唐洛阳城是隋唐两代的都城，本数据集包含外郭城、皇城与宫城（紫微城）格局下的城墙、里坊、市、桥梁与城门等要素，反映隋唐洛阳里坊制城市的空间布局。",
       "files": [
-        { "file": "隋唐洛阳/里坊.geojson", "name": "里坊" },
-        { "file": "隋唐洛阳/市.geojson", "name": "市" },
-        { "file": "隋唐洛阳/紫薇城.geojson", "name": "紫薇城" },
-        { "file": "隋唐洛阳/太微城.geojson", "name": "太微城" },
-        { "file": "隋唐洛阳/外郭城墙.geojson", "name": "外郭城墙" },
-        { "file": "隋唐洛阳/桥.geojson", "name": "桥" },
-        { "file": "隋唐洛阳/城门.geojson", "name": "城门" }
+        { "file": "隋唐洛阳/里坊.geojson", "name": "里坊", "style": { "fillColor": "#c59520", "fillOpacity": 0.28, "strokeWidth": 0.5 } },
+        { "file": "隋唐洛阳/市.geojson", "name": "市", "style": { "fillColor": "#81c520", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "隋唐洛阳/紫薇城.geojson", "name": "紫薇城", "style": { "fillColor": "#4720c5", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "隋唐洛阳/太微城.geojson", "name": "太微城", "style": { "fillColor": "#df3aae", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "隋唐洛阳/外郭城墙.geojson", "name": "外郭城墙", "style": { "lineColor": "#2E8B57", "lineWidth": 1.5 } },
+        { "file": "隋唐洛阳/桥.geojson", "name": "桥", "style": { "lineColor": "#61df3a", "lineWidth": 1.5 } },
+        { "file": "隋唐洛阳/城门.geojson", "name": "城门", "style": { "pointColor": "#9b3adf", "pointSize": 6 } }
       ]
     },
     {
       "name": "隋唐洛阳-西苑",
+      "info": "西苑是隋唐洛阳城西部的皇家园林（隋称显仁宫苑），本数据集包含上阳宫及周边宫城、宫门等要素。上阳宫位于洛水之滨，为唐代重要的离宫别苑。",
       "files": [
-        { "file": "隋唐洛阳/上阳宫.geojson", "name": "上阳宫" },
-        { "file": "隋唐洛阳/上阳宫城墙.geojson", "name": "上阳宫城墙" },
-        { "file": "隋唐洛阳/上阳宫门.geojson", "name": "上阳宫门" }
+        { "file": "隋唐洛阳/上阳宫.geojson", "name": "上阳宫", "style": { "fillColor": "#20c534", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "隋唐洛阳/上阳宫城墙.geojson", "name": "上阳宫城墙", "style": { "lineColor": "#206ec5", "lineWidth": 1.5 } },
+        { "file": "隋唐洛阳/上阳宫门.geojson", "name": "上阳宫门", "style": { "pointColor": "#bc20c5", "pointSize": 6 } }
       ]
     },
     {
       "name": "汉魏洛阳-城",
+      "info": "汉魏洛阳故城是东汉、曹魏、西晋、北魏等朝代的都城遗址，位于今洛阳市东。本数据集包含内城、外郭里坊、市、城墙、桥梁与城门等要素，反映汉魏洛阳城的城市格局。",
       "files": [
-        { "file": "汉魏洛阳/内城.geojson", "name": "内城" },
-        { "file": "汉魏洛阳/里坊.geojson", "name": "外城-里坊" },
-        { "file": "汉魏洛阳/市.geojson", "name": "市" },
-        { "file": "汉魏洛阳/城墙.geojson", "name": "城墙" },
-        { "file": "汉魏洛阳/桥.geojson", "name": "桥" },
-        { "file": "汉魏洛阳/城门.geojson", "name": "城门" }
+        { "file": "汉魏洛阳/内城.geojson", "name": "内城", "style": { "fillColor": "#3ac2df", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "汉魏洛阳/里坊.geojson", "name": "外郭城-里坊", "style": { "fillColor": "#c52020", "fillOpacity": 0.28, "strokeWidth": 0.5 } },
+        { "file": "汉魏洛阳/市.geojson", "name": "市", "style": { "fillColor": "#3a4ddf", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "汉魏洛阳/城墙.geojson", "name": "城墙", "style": { "lineColor": "#df743a", "lineWidth": 1.5 } },
+        { "file": "汉魏洛阳/桥.geojson", "name": "桥", "style": { "lineColor": "#3adf87", "lineWidth": 1.5 } },
+        { "file": "汉魏洛阳/城门.geojson", "name": "城门", "style": { "pointColor": "#c5205a", "pointSize": 6 } }
+      ]
+    },
+    {
+      "name": "其他要素-古代洛阳水系",
+      "info": "洛阳盆地古代水系，包括洛水、伊水、瀍水、涧水等。",
+      "files": [
+        { "file": "其他数据/古水系.geojson", "name": "古水系", "style": { "fillColor": "#20c5a8", "fillOpacity": 0.3, "strokeWidth": 0.5 } }
       ]
     }
   ],

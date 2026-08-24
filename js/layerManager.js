@@ -37,28 +37,46 @@ const LayerManager = (function() {
         });
     }
 
-    // 默认样式配置（由 manifest 颜色派生，供面/线/点三类几何使用）
+    // 颜色加深（每通道 * factor）：面默认描边 = 填充色的深一档同色系
+    function shadeColor(hex, factor = 0.78) {
+        if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+        const n = parseInt(hex.slice(1), 16);
+        const r = Math.round(((n >> 16) & 255) * factor);
+        const g = Math.round(((n >> 8) & 255) * factor);
+        const b = Math.round((n & 255) * factor);
+        return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+    }
+
+    // 默认样式配置（由 manifest 配置派生，供面/线/点三类几何使用）
+    // 优先级：manifest style 对象逐键 → color 快捷色 → 代码默认值。
+    // style 支持键：fillColor/fillOpacity/strokeColor/strokeOpacity/strokeWidth/
+    //   lineColor/lineOpacity/lineWidth/pointColor/pointOpacity/pointSize/
+    //   pointStrokeColor/pointStrokeOpacity/pointStrokeWidth（及 color 快捷色）
     // 所有颜色均配有透明度（0~1）：fillOpacity/strokeOpacity/lineOpacity/pointOpacity/pointStrokeOpacity
     function defaultStyle(config) {
-        const color = config.color || '#4f6ef7';
+        const style = (config && config.style) || {};
+        const color = style.color || config.color || '#4f6ef7';
+        const pick = (key, fallback) => (style[key] !== undefined && style[key] !== null ? style[key] : fallback);
+        // 面：填充 = 配置色；描边默认 = 填充色深一档的同色系（用户要求的默认规则）
+        const fillColor = pick('fillColor', color);
         return {
             // 面
-            fillColor: color,
-            fillOpacity: 0.35,
-            strokeColor: color,
-            strokeOpacity: 0.95,
-            strokeWidth: 1.5,
+            fillColor: fillColor,
+            fillOpacity: pick('fillOpacity', 0.35),
+            strokeColor: pick('strokeColor', shadeColor(fillColor)),
+            strokeOpacity: pick('strokeOpacity', 0.95),
+            strokeWidth: pick('strokeWidth', 1.5),
             // 线
-            lineColor: color,
-            lineOpacity: 0.9,
-            lineWidth: 2.5,
+            lineColor: pick('lineColor', color),
+            lineOpacity: pick('lineOpacity', 0.9),
+            lineWidth: pick('lineWidth', 2.5),
             // 点
-            pointColor: color,
-            pointOpacity: 1,
-            pointSize: 10,
-            pointStrokeColor: '#ffffff',
-            pointStrokeOpacity: 1,
-            pointStrokeWidth: 2,
+            pointColor: pick('pointColor', color),
+            pointOpacity: pick('pointOpacity', 1),
+            pointSize: pick('pointSize', 10),
+            pointStrokeColor: pick('pointStrokeColor', '#ffffff'),
+            pointStrokeOpacity: pick('pointStrokeOpacity', 1),
+            pointStrokeWidth: pick('pointStrokeWidth', 2),
         };
     }
 
@@ -181,70 +199,100 @@ const LayerManager = (function() {
 
     // ---------- 标注定位 ----------
 
-    // 射线法判断点是否在多边形环内（用于保证标注落在多边形内部）
-    function pointInRing(lng, lat, ring) {
-        let inside = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1];
-            const xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) &&
-                (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi)) {
-                inside = !inside;
+    // 多边形内部标注点：polylabel 简化版（网格采样 + 细分迭代），
+    // 返回「离所有边界最远」的内部点——对凹多边形 / 带洞多边形也保证在多边形内部中心。
+    // 局部小范围用等距圆柱近似（lng 乘 cos(lat0) 平面化，与面积计算一致）
+    function polygonInteriorPoint(polygons) {
+        const outerRings = [];
+        const holes = [];
+        for (const polygon of polygons || []) {
+            if (Array.isArray(polygon) && polygon.length) {
+                if (polygon[0] && polygon[0].length >= 3) outerRings.push(polygon[0]);
+                for (let h = 1; h < polygon.length; h++) {
+                    if (polygon[h] && polygon[h].length >= 3) holes.push(polygon[h]);
+                }
             }
         }
-        return inside;
-    }
+        if (outerRings.length === 0) return null;
 
-    // 单环质心（带符号面积法），返回 { lng, lat, area }
-    function ringCentroid(ring) {
-        let area = 0, cx = 0, cy = 0;
-        for (let i = 0; i < ring.length - 1; i += 1) {
-            const current = ring[i];
-            const next = ring[i + 1];
-            const cross = current[0] * next[1] - next[0] * current[1];
-            area += cross;
-            cx += (current[0] + next[0]) * cross;
-            cy += (current[1] + next[1]) * cross;
-        }
-        const absArea = Math.abs(area) / 2;
-        if (absArea === 0) {
-            let sx = 0, sy = 0;
-            for (const p of ring) { sx += p[0]; sy += p[1]; }
-            const n = ring.length || 1;
-            return { lng: sx / n, lat: sy / n, area: 0 };
-        }
-        return { lng: cx / (3 * area), lat: cy / (3 * area), area: absArea };
-    }
-
-    // 多边形标注点：面积加权质心；若落在所有外环外，退化为最大环自身质心 / 顶点均值
-    function polygonCenter(outerRings) {
-        let totalArea = 0, sumLng = 0, sumLat = 0;
-        const ringStats = [];
-        let allLng = 0, allLat = 0, allN = 0;
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (const ring of outerRings) {
-            if (!ring || ring.length < 3) continue;
-            const c = ringCentroid(ring);
-            ringStats.push({ ...c, ring });
-            if (c.area > 0) {
-                totalArea += c.area;
-                sumLng += c.lng * c.area;
-                sumLat += c.lat * c.area;
-            }
-            for (const p of ring) { allLng += p[0]; allLat += p[1]; allN += 1; }
-        }
-        if (totalArea > 0) {
-            const lng = sumLng / totalArea;
-            const lat = sumLat / totalArea;
-            if (outerRings.some(r => r && r.length >= 3 && pointInRing(lng, lat, r))) {
-                return L.latLng(lat, lng);
+            for (const c of ring) {
+                if (c[0] < minX) minX = c[0];
+                if (c[0] > maxX) maxX = c[0];
+                if (c[1] < minY) minY = c[1];
+                if (c[1] > maxY) maxY = c[1];
             }
         }
-        const largest = ringStats.slice().sort((a, b) => b.area - a.area)[0];
-        if (largest && largest.area > 0 && pointInRing(largest.lng, largest.lat, largest.ring)) {
-            return L.latLng(largest.lat, largest.lng);
+        const cosLat = Math.cos((minY + maxY) / 2 * Math.PI / 180) || 1;
+        const toXY = c => [c[0] * cosLat, c[1]];
+        const outerXY = outerRings.map(r => r.map(toXY));
+        const holesXY = holes.map(r => r.map(toXY));
+        const width = (maxX - minX) * cosLat || 1;
+        const height = maxY - minY || 1;
+
+        // 射线法：点是否在环内（平面化坐标）
+        const inRing = (x, y, ring) => {
+            let inside = false;
+            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                const xi = ring[i][0], yi = ring[i][1];
+                const xj = ring[j][0], yj = ring[j][1];
+                if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
+            }
+            return inside;
+        };
+        const inside = (x, y) =>
+            outerXY.some(r => inRing(x, y, r)) && !holesXY.some(r => inRing(x, y, r));
+
+        const distToSeg = (x, y, ax, ay, bx, by) => {
+            const dx = bx - ax, dy = by - ay;
+            const len2 = dx * dx + dy * dy;
+            const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+            return Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+        };
+        const distToBoundary = (x, y) => {
+            let min = Infinity;
+            const all = outerXY.concat(holesXY);
+            for (const ring of all) {
+                for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                    const d = distToSeg(x, y, ring[i][0], ring[i][1], ring[j][0], ring[j][1]);
+                    if (d < min) min = d;
+                }
+            }
+            return min;
+        };
+
+        // 网格采样（24×24），取内部「离边界最远」的点
+        const stepX = width / 24, stepY = height / 24;
+        let bestX = null, bestY = null, bestDist = -1;
+        for (let i = 0; i <= 24; i++) {
+            for (let j = 0; j <= 24; j++) {
+                const x = minX * cosLat + i * stepX;
+                const y = minY + j * stepY;
+                if (!inside(x, y)) continue;
+                const d = distToBoundary(x, y);
+                if (d > bestDist) { bestDist = d; bestX = x; bestY = y; }
+            }
         }
-        if (allN) return L.latLng(allLat / allN, allLng / allN);
-        return null;
+        if (bestX === null) return null;
+
+        // 细分 3 轮：围绕当前最优点在缩小一半的 cell 邻域内继续找更远点
+        let cell = Math.max(stepX, stepY) / 2;
+        let cx = bestX, cy = bestY;
+        for (let it = 0; it < 3; it++) {
+            let found = false;
+            for (let i = -1; i <= 1 && !found; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    const x = cx + i * cell, y = cy + j * cell;
+                    if (!inside(x, y)) continue;
+                    const d = distToBoundary(x, y);
+                    if (d > bestDist) { bestDist = d; bestX = x; bestY = y; found = true; }
+                }
+            }
+            if (found) { cx = bestX; cy = bestY; }
+            cell /= 2;
+        }
+        return L.latLng(bestY, bestX / cosLat);
     }
 
     // 线标注点：按累计长度取整条线中点，并返回中点所在段的屏幕方向角（用于判断是否垂直排列标注）
@@ -321,10 +369,10 @@ const LayerManager = (function() {
             }
 
             case 'Polygon':
-                return polygonCenter([coordinates[0]]);
+                return polygonInteriorPoint([coordinates]);
 
             case 'MultiPolygon':
-                return polygonCenter(coordinates.map(polygon => polygon[0]));
+                return polygonInteriorPoint(coordinates);
 
             case 'GeometryCollection':
                 for (const sub of (geometry.geometries || [])) {
@@ -375,18 +423,17 @@ const LayerManager = (function() {
             // 统一归类到 point / linestring / polygon 三个样式类，Multi* 也能正确居中
             const geomClass = kind === 'point' ? 'point' : (kind === 'line' ? 'linestring' : 'polygon');
 
-            // 线要素：标注始终保持正向（不旋转）；走向较陡（与水平夹角 > 45°）时改为垂直排列；
-            // 同时沿法线方向偏移到线旁（不压线）。Mercator 投影保角，屏幕方向角不随缩放/平移变化
+            // 线要素：标注始终横向排列（不随线走向旋转、不竖排），
+            // 仅沿法线方向偏移到线旁（不压线）。Mercator 投影保角，屏幕方向角不随缩放/平移变化
             let vertical = false;
             let offsetAttr = '';
             if (kind === 'line') {
                 const centerInfo = lineCenter(geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates);
                 if (centerInfo) {
-                    vertical = Math.abs(centerInfo.angle) > 45;
                     const lineWidth = Math.max(0.5, Number(styleConfig.lineWidth) || 2.5);
                     const normalGap = Math.max(7, lineWidth / 2 + 5);
                     const rad = centerInfo.angle * Math.PI / 180;
-                    // 法线朝屏幕上方一侧（水平线时标注在线上方），文字保持正向
+                    // 法线朝屏幕上方一侧（水平线时标注在线上方），文字保持正向横向排列
                     const dx = Math.round(-Math.sin(rad) * normalGap * 10) / 10;
                     const dy = Math.round(-Math.cos(rad) * normalGap * 10) / 10;
                     offsetAttr = `;--label-dx:${dx}px;--label-dy:${dy}px`;
@@ -526,9 +573,17 @@ const LayerManager = (function() {
                 }
 
                 const map = MapManager.getMap();
-                // 样式 = 默认值 + 用户已保存的配置
+                // 样式合并：
+                //  - manifest 为该图层配置了 style → 完全按 manifest 派生（defaultStyle 已做键级回退：
+                //    manifest style 键 > color > 代码默认），**忽略 savedStyles**——manifest 是权威默认，
+                //    用户旧 localStorage 不会残留任何键（否则表现为「配置只应用了部分」）
+                //  - manifest 未配置 style → 代码默认 + 用户已保存样式
                 const savedStyles = readSavedStyles();
-                const styleConfig = { ...defaultStyle(sourceConfig), ...(savedStyles[id] || {}) };
+                const manifestStyle = sourceConfig.style && typeof sourceConfig.style === 'object'
+                    && Object.keys(sourceConfig.style).length > 0;
+                const styleConfig = manifestStyle
+                    ? { ...defaultStyle(sourceConfig) }
+                    : { ...defaultStyle(sourceConfig), ...(savedStyles[id] || {}) };
                 const styleFn = createStyleFunction(styleConfig);
 
                 // 先建立 info 容器：popup 恢复样式时通过它动态读取最新 styleConfig
@@ -585,19 +640,8 @@ const LayerManager = (function() {
         return Promise.all(pending.map(source => loadLayer(source))).then(() => {
             // 应用拖拽保存的顺序（新数据集图层按来源顺序追加在末尾），并按最终顺序重设叠加次序
             applySavedOrder();
-            const map = MapManager.getMap();
-            layers.forEach(info => {
-                if (info.visible) {
-                    map.removeLayer(info.layer);
-                    if (info.labelsVisible) map.removeLayer(info.labelLayer);
-                }
-            });
-            layers.forEach(info => {
-                if (info.visible) {
-                    info.layer.addTo(map);
-                    if (info.labelsVisible) info.labelLayer.addTo(map);
-                }
-            });
+            // 列表越靠上 = 绘制层级越高（reapplyLayerOrder 逆序移动 SVG path）
+            reapplyLayerOrder(MapManager.getMap());
 
             const loaded = pending.filter(source => layers.has(source.id)).length;
             const failed = pending.length - loaded;
@@ -607,6 +651,23 @@ const LayerManager = (function() {
             UIManager.updateButtonsState(layers.size > 0);
             return { loaded, failed };
         });
+    }
+
+    // 按「列表越靠上 = 绘制层级越高」重设地图叠加次序。
+    // 注意：Leaflet 的 layer._order 在首次 addTo 时分配后不再更新（removeLayer+addTo 无法改变
+    // SVG path 顺序）——必须直接移动 DOM：把每个图层的 path appendChild 到 SVG 末尾，
+    // 逆序遍历（底部图层先移、列表顶部图层最后移 → 顶部在最高层）
+    function reapplyLayerOrder(map) {
+        const visibleLayers = [...layers.values()].filter(info => info.visible);
+        for (let i = visibleLayers.length - 1; i >= 0; i--) {
+            const info = visibleLayers[i];
+            const renderer = map.getRenderer(info.layer);
+            const root = renderer && renderer._rootGroup;
+            if (!root) continue;
+            info.layer.eachLayer(l => {
+                if (l && l._path && l._path.parentNode === root) root.appendChild(l._path);
+            });
+        }
     }
 
     // ---------- 移除数据集 ----------
@@ -655,20 +716,8 @@ const LayerManager = (function() {
             if (!layers.has(id)) layers.set(id, info);
         });
 
-        // 按新顺序重设地图叠加次序（含标注层，保持标注与要素的层级一致）
-        const map = MapManager.getMap();
-        layers.forEach(info => {
-            if (info.visible) {
-                map.removeLayer(info.layer);
-                if (info.labelsVisible) map.removeLayer(info.labelLayer);
-            }
-        });
-        layers.forEach(info => {
-            if (info.visible) {
-                info.layer.addTo(map);
-                if (info.labelsVisible) info.labelLayer.addTo(map);
-            }
-        });
+        // 按新顺序重设地图叠加次序（列表越靠上 = 绘制层级越高）
+        reapplyLayerOrder(MapManager.getMap());
         persistOrder([...layers.keys()]);
         // 高亮叠加层重新置顶，保证始终位于重排后的图层之上
         if (highlightOverlay) {
@@ -693,6 +742,8 @@ const LayerManager = (function() {
                 }
             }
         });
+        // 显示后重设叠加次序（列表越靠上 = 绘制层级越高）
+        if (visible) reapplyLayerOrder(map);
         // 批量切换后逐个更新条目 UI，避免全量重建；并刷新工具栏按钮可用态（显示/隐藏按钮随可见状态变化）
         targetLayers.forEach((_, id) => UIManager.updateLayerItem(id));
         UIManager.updateLegend();

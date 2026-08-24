@@ -8,6 +8,8 @@ const UIManager = (function() {
     let sortableInstances = [];
     let searchKeyword = '';
     let stylePanelLayerId = null;
+    // 数据集菜单元素（portal 到 body 后 wrap.querySelector 找不到，须闭包持有引用）
+    let datasetMenuEl = null;
 
     // 已折叠的数据集分组（localStorage 持久化）
     const COLLAPSE_STORAGE_KEY = 'lyc_collapsed_groups_v1';
@@ -28,8 +30,7 @@ const UIManager = (function() {
 
     const BUTTON_IDS = [
         'selectAll', 'deselectAll',
-        'zoomToAll',
-        'removeAllDatasets'
+        'zoomToAll'
     ];
 
     function init() {
@@ -82,70 +83,194 @@ const UIManager = (function() {
     }
 
     // ================================================================
-    // 添加数据集菜单：列出 manifest 中的数据集，点击加载到图层列表
+    // 添加数据集菜单：多选数据集，一键批量加载到图层列表
     // ================================================================
 
     function updateAddDatasetMenu() {
         const wrap = document.getElementById('datasetAdd');
         if (!wrap) return;
-        const menu = wrap.querySelector('.dataset-select-menu');
-        const trigger = wrap.querySelector('.dataset-select-trigger');
-        if (!menu || !trigger) return;
+        const menu = datasetMenuEl || wrap.querySelector('.dataset-select-menu');
+        if (!menu) return;
 
         const datasets = DataScanner.getDatasets();
         const loadedGroups = new Set(LayerManager.getLoadedGroupNames());
 
         if (datasets.length === 0) {
-            menu.innerHTML = '<div class="dataset-menu-empty">暂无可用数据集</div>';
+            menu.innerHTML = '<div class="dataset-menu-empty"><i class="fas fa-database"></i>暂无可用数据集</div>';
             return;
         }
 
-        menu.innerHTML = datasets.map(dataset => {
+        // 已加载项：checkbox 默认勾选、可取消（取消 = 从地图移除）；未加载项：勾选 = 添加。
+        // 徽章：已加载 →「已加载」；取消勾选 →「待移除」；未加载勾选 →「待添加」
+        const options = datasets.map(dataset => {
             const loaded = loadedGroups.has(dataset.name);
             const safeName = escapeHtml(dataset.name);
-            return `<button type="button" class="dataset-select-option${loaded ? ' loaded' : ''}" role="option" aria-selected="false" data-value="${safeName}" ${loaded ? 'disabled' : ''} data-tooltip="${loaded ? '已加载' : '添加到地图'}">
-                <span class="dataset-option-name">${safeName}<em>${dataset.sources.length} 图层</em></span>
-                <i class="fas ${loaded ? 'fa-check' : 'fa-plus'}"></i>
-            </button>`;
+            return `<label class="dataset-select-option${loaded ? ' loaded' : ''}" data-value="${safeName}">
+                <input type="checkbox" ${loaded ? 'checked' : ''} />
+                <span class="dataset-option-name">${safeName}<em>${dataset.sources.length} 个图层</em></span>
+                <span class="dataset-option-badge" data-badge>${loaded ? '已加载' : ''}</span>
+            </label>`;
         }).join('');
 
+        menu.innerHTML = `
+            <div class="dataset-menu-head">
+                <div class="dataset-menu-title">管理数据集</div>
+                <div class="dataset-menu-desc">勾选 = 添加到地图；取消已加载项的勾选 = 从地图移除</div>
+            </div>
+            <div class="dataset-menu-body">${options}</div>
+            <div class="dataset-menu-footer">
+                <span class="dataset-menu-count">未改动</span>
+                <div class="dataset-menu-actions">
+                    <button type="button" class="dataset-cancel-btn">取消</button>
+                    <button type="button" class="dataset-apply-btn" disabled>应用</button>
+                </div>
+            </div>
+        `;
+
+        // 选项点击：label 默认行为自动 toggle checkbox，change 事件同步勾选态、徽章与底部计数；
+        // 注意：不要再手动改 input.checked——label 会再派发一次 click 导致双重 toggle
         menu.querySelectorAll('.dataset-select-option').forEach(option => {
-            option.addEventListener('click', event => {
-                event.stopPropagation();
-                const name = option.dataset.value;
-                if (option.classList.contains('loaded')) return;
-                closeAddDatasetMenu(wrap);
-                addDataset(name);
-            });
+            const input = option.querySelector('input');
+            if (input) {
+                input.addEventListener('change', () => {
+                    option.classList.toggle('selected', input.checked);
+                    updateOptionBadge(option, input.checked);
+                    updateDatasetMenuState(menu);
+                });
+            }
         });
+
+        // 取消：关闭菜单
+        menu.querySelector('.dataset-cancel-btn').addEventListener('click', () => {
+            closeAddDatasetMenu(wrap);
+        });
+
+        // 应用：添加勾选的未加载数据集 + 移除取消勾选的已加载数据集
+        menu.querySelector('.dataset-apply-btn').addEventListener('click', async () => {
+            const toAdd = [...menu.querySelectorAll('.dataset-select-option:not(.loaded)')]
+                .filter(option => option.querySelector('input').checked)
+                .map(option => option.dataset.value);
+            const toRemove = [...menu.querySelectorAll('.dataset-select-option.loaded')]
+                .filter(option => !option.querySelector('input').checked)
+                .map(option => option.dataset.value);
+            if (toAdd.length === 0 && toRemove.length === 0) return;
+            if (toRemove.length > 0) {
+                const ok = await showAppModal({
+                    icon: 'fa-trash-can',
+                    title: '移除数据集',
+                    message: `将从地图移除：${toRemove.join('、')}\n其图层将从地图与列表中移除，可随时重新添加。`,
+                    confirmText: '移除',
+                    danger: true,
+                });
+                if (!ok) return;
+            }
+            closeAddDatasetMenu(wrap);
+            if (toAdd.length > 0) await addDatasets(toAdd);
+            toRemove.forEach(name => LayerManager.removeDataset(name));
+            if (toRemove.length > 0) showToast(`已移除 ${toRemove.length} 个数据集`, 'info');
+        });
+    }
+
+    // 选项徽章状态：未加载勾选 →「待添加」；已加载取消勾选 →「待移除」；其余恢复默认
+    function updateOptionBadge(option, checked) {
+        const badge = option.querySelector('[data-badge]');
+        if (!badge) return;
+        const loaded = option.classList.contains('loaded');
+        if (!loaded && checked) {
+            badge.textContent = '待添加';
+            badge.classList.add('pending-add');
+            badge.classList.remove('pending-remove');
+            badge.hidden = false;
+        } else if (loaded && !checked) {
+            badge.textContent = '待移除';
+            badge.classList.add('pending-remove');
+            badge.classList.remove('pending-add');
+            badge.hidden = false;
+        } else {
+            badge.textContent = loaded ? '已加载' : '';
+            badge.classList.remove('pending-add', 'pending-remove');
+            badge.hidden = loaded ? false : true;
+        }
+    }
+
+    // 菜单底部：添加/移除计数 + 「应用」按钮可用态
+    function updateDatasetMenuState(menu) {
+        const addCount = [...menu.querySelectorAll('.dataset-select-option:not(.loaded)')]
+            .filter(option => option.querySelector('input').checked).length;
+        const removeCount = [...menu.querySelectorAll('.dataset-select-option.loaded')]
+            .filter(option => !option.querySelector('input').checked).length;
+        const count = menu.querySelector('.dataset-menu-count');
+        const apply = menu.querySelector('.dataset-apply-btn');
+        if (count) {
+            if (addCount === 0 && removeCount === 0) count.textContent = '未改动';
+            else if (removeCount === 0) count.textContent = `添加 ${addCount} 个`;
+            else if (addCount === 0) count.textContent = `移除 ${removeCount} 个`;
+            else count.textContent = `添加 ${addCount} 个 · 移除 ${removeCount} 个`;
+        }
+        if (apply) apply.disabled = addCount === 0 && removeCount === 0;
     }
 
     function closeAddDatasetMenu(wrap) {
         wrap.classList.remove('open');
-        wrap.querySelector('.dataset-select-trigger')?.setAttribute('aria-expanded', 'false');
+        const menu = datasetMenuEl || wrap.querySelector('.dataset-select-menu');
+        if (menu) {
+            menu.classList.remove('open');
+            // 菜单移回 wrap：面板重建/下次打开时始终能按 wrap 内查找
+            if (menu.parentElement !== wrap) wrap.appendChild(menu);
+        }
+        wrap.querySelector('.dataset-add-btn')?.setAttribute('aria-expanded', 'false');
     }
 
-    async function addDataset(name) {
-        const result = await LayerManager.loadDataset(name);
-        if (result.loaded > 0) {
-            showToast(`已加载「${name}」· ${result.loaded} 个图层`, 'success');
-            // 缩放到新加载数据集的范围，让用户立即看到数据
-            const bounds = L.latLngBounds();
-            let hasValid = false;
-            LayerManager.getLayersByGroup(name).forEach(info => {
-                if (info.visible && info.layer.getBounds().isValid()) {
-                    bounds.extend(info.layer.getBounds());
-                    hasValid = true;
-                }
-            });
-            if (hasValid) MapManager.fitBounds(bounds, { padding: [50, 50] });
-            if (result.failed > 0) showToast(`${result.failed} 个图层加载失败`, 'warning');
-        } else if (result.failed > 0) {
-            showToast(`「${name}」加载失败`, 'error');
-            updateLayerPanel();
+    // 数据集菜单定位（fixed，菜单已在 body）：右对齐按钮下方，视口内 clamp；
+    // 底部空间不足时压缩菜单高度（内部 body 滚动）
+    function positionDatasetMenu(menu) {
+        const wrap = document.getElementById('datasetAdd');
+        if (!wrap || !menu) return;
+        const btn = wrap.querySelector('.dataset-add-btn');
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const mw = menu.offsetWidth || 292;
+        let left = rect.right - mw;
+        left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+        let top = rect.bottom + 8;
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+        // 底部放不下时优先压缩菜单自身高度（body 区内部滚动），压到极限仍不够再向上翻
+        const avail = window.innerHeight - top - 8;
+        if (avail < 160) {
+            menu.style.maxHeight = '';
+            const mh = menu.offsetHeight;
+            top = Math.max(8, rect.top - mh - 8);
+            menu.style.top = `${Math.round(top)}px`;
+            menu.style.maxHeight = `${Math.min(mh, window.innerHeight - top - 8)}px`;
         } else {
-            showToast(`「${name}」已在图层列表中`, 'info');
+            menu.style.maxHeight = `${Math.round(avail)}px`;
         }
+    }
+
+    // 批量加载数据集：依次加载，汇总成功/失败；全部加载后缩放到整体范围
+    async function addDatasets(names) {
+        if (!names || names.length === 0) return;
+        const bounds = L.latLngBounds();
+        let hasValid = false;
+        let loaded = 0;
+        const failedNames = [];
+        for (const name of names) {
+            const result = await LayerManager.loadDataset(name);
+            if (result.loaded > 0) {
+                loaded += 1;
+                LayerManager.getLayersByGroup(name).forEach(info => {
+                    if (info.visible && info.layer.getBounds().isValid()) {
+                        bounds.extend(info.layer.getBounds());
+                        hasValid = true;
+                    }
+                });
+            }
+            if (result.failed > 0) failedNames.push(name);
+        }
+        if (hasValid) MapManager.fitBounds(bounds);
+        if (loaded > 0) showToast(`已加载 ${loaded} 个数据集`, 'success');
+        if (failedNames.length > 0) showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
     }
 
     function initTooltips() {
@@ -213,7 +338,7 @@ const UIManager = (function() {
         container.querySelectorAll('.layer-group-items').forEach(groupContainer => {
             sortableInstances.push(Sortable.create(groupContainer, {
                 handle: '.drag-handle',
-                animation: 260,
+                animation: 200,
                 easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
                 ghostClass: 'sortable-ghost',
                 chosenClass: 'sortable-chosen',
@@ -221,16 +346,45 @@ const UIManager = (function() {
                 forceFallback: true,
                 fallbackOnBody: true,
                 fallbackTolerance: 2,
+                // 拖拽期间容器加 sorting-active：图层行 transition 全部归零，
+                // 避免 .layer-item 的 transition: all 与 Sortable 让位动画叠加造成卡顿（流畅度核心）
+                onStart: () => container.classList.add('sorting-active'),
                 onEnd: function() {
-                    const orderedIds = [];
-                    container.querySelectorAll('.layer-item').forEach(item => {
-                        const id = item.dataset.id;
-                        if (id) orderedIds.push(id);
-                    });
-                    LayerManager.setLayerOrder(orderedIds);
+                    container.classList.remove('sorting-active');
+                    LayerManager.setLayerOrder(collectLayerOrder(container));
                 }
             }));
         });
+
+        // 分组级 Sortable：整个数据集分组可拖拽调整加载顺序（handle 限分组头把手）。
+        // 分组顺序 = 图层顺序的子集（同一分组图层连续）——拖完后按新 DOM 顺序重排图层即可，
+        // setLayerOrder 会同时重设 z-order 并持久化到 lyc_layer_order_v1（刷新后分组顺序随之恢复）
+        sortableInstances.push(Sortable.create(container, {
+            handle: '.layer-group-drag',
+            animation: 200,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            forceFallback: true,
+            fallbackOnBody: true,
+            fallbackTolerance: 2,
+            onStart: () => container.classList.add('sorting-active'),
+            onEnd: function() {
+                container.classList.remove('sorting-active');
+                LayerManager.setLayerOrder(collectLayerOrder(container));
+            }
+        }));
+    }
+
+    // 按当前 DOM 顺序收集全部图层 id（分组拖拽后分组顺序变化，图层顺序随之变化）
+    function collectLayerOrder(container) {
+        const orderedIds = [];
+        container.querySelectorAll('.layer-item').forEach(item => {
+            const id = item.dataset.id;
+            if (id) orderedIds.push(id);
+        });
+        return orderedIds;
     }
 
     function updateButtonsState(enabled = LayerManager.getAllLayers().size > 0) {
@@ -275,15 +429,37 @@ const UIManager = (function() {
     }
 
     function bindEvents() {
+        // 点击任何位置关闭分组头「更多」菜单（菜单项与更多按钮均已 stopPropagation）
+        document.addEventListener('click', closeAllGroupMoreMenus);
+        // 任何容器滚动时让「更多」菜单跟随按钮重新定位（scroll 不冒泡，捕获阶段可监听所有元素）
+        document.addEventListener('scroll', repositionGroupMoreMenus, true);
+
         const datasetAdd = document.getElementById('datasetAdd');
         if (datasetAdd) {
-            datasetAdd.querySelector('.dataset-select-trigger').addEventListener('click', function(event) {
+            datasetMenuEl = datasetAdd.querySelector('.dataset-select-menu');
+            datasetAdd.querySelector('.dataset-add-btn').addEventListener('click', function(event) {
                 event.stopPropagation();
-                const open = datasetAdd.classList.toggle('open');
-                this.setAttribute('aria-expanded', String(open));
+                const menu = datasetMenuEl;
+                if (!menu) return;
+                const wasOpen = menu.classList.contains('open');
+                closeAddDatasetMenu(datasetAdd);
+                if (wasOpen) return; // toggle：再次点击关闭
+                // portal：菜单移入 body，避免面板 backdrop-filter 劫持 fixed 定位基准 / max-height 裁剪
+                if (menu.parentElement !== document.body) {
+                    document.body.appendChild(menu);
+                }
+                // 每次打开重渲染菜单，重置勾选状态（已加载项仍显示已加载）
+                updateAddDatasetMenu();
+                menu.classList.add('open');
+                datasetAdd.classList.add('open');
+                this.setAttribute('aria-expanded', 'true');
+                positionDatasetMenu(menu);
             });
             document.addEventListener('click', event => {
-                if (!datasetAdd.contains(event.target)) closeAddDatasetMenu(datasetAdd);
+                const menu = datasetMenuEl;
+                if (!datasetAdd.contains(event.target) && !(menu && menu.contains(event.target))) {
+                    closeAddDatasetMenu(datasetAdd);
+                }
             });
         }
         const themeBtn = document.getElementById('toggleTheme');
@@ -374,28 +550,11 @@ const UIManager = (function() {
                     }
                 }
                 if (hasValid) {
-                    MapManager.fitBounds(bounds, { padding: [50, 50] });
+                    MapManager.fitBounds(bounds);
                     showToast('已缩放至全部可见图层', 'success');
                 } else {
                     showToast('没有可见的数据图层', 'info');
                 }
-            });
-        }
-
-        // ===== 数据集分组批量操作（工具栏） =====
-        const removeAllBtn = document.getElementById('removeAllDatasets');
-        if (removeAllBtn) {
-            removeAllBtn.addEventListener('click', function() {
-                const names = LayerManager.getLoadedGroupNames();
-                if (names.length === 0) {
-                    showToast('暂无已加载的数据集', 'info');
-                    return;
-                }
-                if (!confirm(`确定要删除所有数据集吗？\n共 ${names.length} 个数据集（${names.join('、')}）将被移除，可随时重新添加。`)) return;
-                names.forEach(name => LayerManager.removeDataset(name));
-                collapsedGroups.clear();
-                persistCollapsedGroups();
-                showToast('已删除所有数据集', 'info');
             });
         }
 
@@ -492,7 +651,7 @@ const UIManager = (function() {
     }
 
     // 渲染单个图层条目（所有动态文本/属性均已转义）
-    // 主流顺序：左侧 [拖拽把手][显隐眼睛] 图例 名称，右侧操作 [缩放][标注]（样式入口=点击图例）
+    // 主流顺序：左侧 [拖拽把手][显隐眼睛] 图例 名称，右侧操作 [缩放][下载][标注]（样式入口=点击图例）
     function renderLayerItem(id, info) {
         const { name } = info.config;
         const { visible, featureCount, labelsVisible, labelField, data } = info;
@@ -522,6 +681,9 @@ const UIManager = (function() {
                 <div class="layer-actions">
                     <button type="button" class="zoom-btn" data-tooltip="${isVisible ? '缩放至该图层' : '图层隐藏时不可缩放'}" aria-label="缩放至${safeName}" ${isVisible ? '' : 'disabled'}>
                         <i class="fas fa-crosshairs"></i>
+                    </button>
+                    <button type="button" class="download-btn" data-tooltip="下载该图层数据" aria-label="下载${safeName}数据">
+                        <i class="fas fa-download"></i>
                     </button>
                     <button type="button" class="label-btn ${labelsVisible ? 'active' : ''}" data-tooltip="${!isVisible ? '图层隐藏时不可显示标注' : (labelField ? (labelsVisible ? '隐藏标注' : '显示标注') : '无可用标注字段，无法标注')}" aria-label="${labelField ? (labelsVisible ? '隐藏' + safeName + '标注' : '显示' + safeName + '标注') : safeName + '无法标注'}" ${labelsEnabled ? '' : 'disabled'}>
                         <i class="fas fa-tag"></i>
@@ -572,6 +734,12 @@ const UIManager = (function() {
         if (zoomBtn) {
             zoomBtn.disabled = !isVisible;
             zoomBtn.dataset.tooltip = isVisible ? '缩放至该图层' : '图层隐藏时不可缩放';
+        }
+
+        // 下载按钮：数据下载与图层可见性无关，始终可用
+        const downloadBtn = item.querySelector('.download-btn');
+        if (downloadBtn) {
+            downloadBtn.dataset.tooltip = `下载「${info.config.name}」数据`;
         }
 
         const labelBtn = item.querySelector('.label-btn');
@@ -642,14 +810,19 @@ const UIManager = (function() {
         if (collapseBtn) collapseBtn.disabled = !hasGroups || collapsedCount === groups.length;
     }
 
-    // 分组头操作按钮可用态：全可见时禁用显示、全隐藏时禁用隐藏/缩放
+    // 分组头操作按钮可用态：全可见时禁用显示、全隐藏时禁用隐藏/缩放。
+    // 注意：更多菜单项可能已 portal 到 body，不能只查 groupEl 内
     function updateGroupVisButtons(groupEl, name) {
         const infos = [...LayerManager.getLayersByGroup(name).values()];
         if (infos.length === 0) return;
         const allVisible = infos.every(info => info.visible);
         const noneVisible = infos.every(info => !info.visible);
-        const showBtn = groupEl.querySelector('.layer-group-show');
-        const hideBtn = groupEl.querySelector('.layer-group-hide');
+        const esc = CSS.escape(name);
+        const findIn = (cls) =>
+            document.querySelector(`body > .layer-group-more-menu[data-group="${esc}"] .${cls}`)
+            || groupEl.querySelector(`.${cls}`);
+        const showBtn = findIn('layer-group-show');
+        const hideBtn = findIn('layer-group-hide');
         const zoomBtn = groupEl.querySelector('.layer-group-zoom');
         if (showBtn) showBtn.disabled = allVisible;
         if (hideBtn) hideBtn.disabled = noneVisible;
@@ -667,11 +840,84 @@ const UIManager = (function() {
             }
         });
         if (hasValid) {
-            MapManager.fitBounds(bounds, { padding: [50, 50] });
+            MapManager.fitBounds(bounds);
             showToast(`已缩放至「${name}」可见图层`, 'success');
         } else {
             showToast(`「${name}」暂无可见图层`, 'info');
         }
+    }
+
+    // 收起所有分组头「更多」菜单（菜单已 portal 到 body，直接按 open 类管理）
+    function closeAllGroupMoreMenus() {
+        document.querySelectorAll('.layer-group-more-menu.open').forEach(menu => {
+            menu.classList.remove('open');
+            const groupName = menu.dataset.group;
+            if (groupName) {
+                const wrap = document.querySelector(`.layer-group[data-group="${CSS.escape(groupName)}"] .layer-group-more`);
+                const btn = wrap?.querySelector('.layer-group-more-btn');
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            }
+        });
+    }
+
+    // 「更多」菜单定位（fixed，菜单已在 body）：右对齐按钮下方，空间不足向上展开，视口内 clamp。
+    // 用 offsetWidth/offsetHeight 测量（不受展开动画 transform 影响）
+    function positionMoreMenu(btn, menu) {
+        if (!btn || !menu) return;
+        const rect = btn.getBoundingClientRect();
+        const mw = menu.offsetWidth;
+        const mh = menu.offsetHeight;
+        let left = rect.right - mw;
+        left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+        let top = rect.bottom + 6;
+        if (top + mh > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - mh - 6);
+        }
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+    }
+
+    // 滚动/窗口变化时让所有打开的「更多」菜单跟随按钮重新定位
+    function repositionGroupMoreMenus() {
+        document.querySelectorAll('.layer-group-more-menu.open').forEach(menu => {
+            const groupName = menu.dataset.group;
+            if (!groupName) return;
+            const btn = document.querySelector(`.layer-group[data-group="${CSS.escape(groupName)}"] .layer-group-more-btn`);
+            if (btn) positionMoreMenu(btn, menu);
+        });
+    }
+
+    // 下载单个图层数据为 GeoJSON 文件（data 为完整 FeatureCollection，含 name/crs 等）。
+    // 先弹窗确认，确认后才触发下载
+    async function downloadLayer(id) {
+        const info = LayerManager.getLayerInfo(id);
+        if (!info || !info.data || !Array.isArray(info.data.features)) {
+            showToast('该图层无数据可下载', 'info');
+            return;
+        }
+        const name = info.config.name || id;
+        const ok = await showAppModal({
+            icon: 'fa-download',
+            title: '下载图层数据',
+            message: `确认下载「${name}」的 ${info.data.features.length} 个要素数据（GeoJSON）？`,
+            confirmText: '下载',
+            nowrap: true,
+        });
+        if (!ok) return;
+        const collection = { ...info.data, type: 'FeatureCollection', name };
+        const blob = new Blob([JSON.stringify(collection, null, 2)], { type: 'application/geo+json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${name}.geojson`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast(`已导出「${name}」${info.data.features.length} 个要素`, 'success');
     }
 
     function updateLayerPanel() {
@@ -689,7 +935,7 @@ const UIManager = (function() {
                 <div class="empty-state">
                     <i class="fas fa-database empty-icon"></i>
                     <div class="empty-title">尚未添加数据集</div>
-                    <div class="empty-desc">点击上方「选择数据集」把数据加载到地图</div>
+                    <div class="empty-desc">点击上方「添加数据集」把数据加载到地图</div>
                 </div>
             `;
             return;
@@ -714,22 +960,33 @@ const UIManager = (function() {
             html += `
                 <div class="layer-group${collapsed ? ' collapsed' : ''}" data-group="${safeName}">
                     <div class="layer-group-header" data-tooltip="${collapsed ? '展开分组' : '折叠分组'}">
+                        <span class="layer-group-drag" data-tooltip="拖动调整数据集加载顺序" aria-label="拖动${safeName}调整顺序"><i class="fas fa-grip-vertical"></i></span>
                         <span class="layer-group-collapse" role="button" aria-expanded="${!collapsed}" aria-label="${collapsed ? '展开' : '折叠'}${safeName}"><i class="fas fa-chevron-down"></i></span>
                         <span class="layer-group-icon"><i class="fas fa-database"></i></span>
                         <span class="layer-group-name">${safeName}</span>
                         <span class="layer-group-count">${group.items.length}</span>
-                        <button type="button" class="layer-group-vis layer-group-show" data-tooltip="显示该数据集全部图层" aria-label="显示${safeName}全部图层">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button type="button" class="layer-group-vis layer-group-hide" data-tooltip="隐藏该数据集全部图层" aria-label="隐藏${safeName}全部图层">
-                            <i class="fas fa-eye-slash"></i>
-                        </button>
                         <button type="button" class="layer-group-vis layer-group-zoom" data-tooltip="缩放至该数据集可见图层" aria-label="缩放至${safeName}可见图层">
                             <i class="fas fa-crosshairs"></i>
                         </button>
-                        <button type="button" class="layer-group-remove" data-tooltip="移除数据集（可重新添加）" aria-label="移除数据集${safeName}">
-                            <i class="fas fa-trash-can"></i>
+                        <button type="button" class="layer-group-vis layer-group-info" data-tooltip="数据集介绍" aria-label="${safeName}介绍">
+                            <i class="fas fa-circle-info"></i>
                         </button>
+                        <div class="layer-group-more">
+                            <button type="button" class="layer-group-more-btn" aria-haspopup="menu" aria-expanded="false" data-tooltip="更多操作" aria-label="${safeName}更多操作">
+                                <i class="fas fa-ellipsis-vertical"></i>
+                            </button>
+                            <div class="layer-group-more-menu" role="menu" data-group="${safeName}">
+                                <button type="button" class="more-item layer-group-show" role="menuitem" data-tooltip="显示全部图层" aria-label="显示${safeName}全部图层">
+                                    <i class="fas fa-eye"></i><span>显示全部</span>
+                                </button>
+                                <button type="button" class="more-item layer-group-hide" role="menuitem" data-tooltip="隐藏全部图层" aria-label="隐藏${safeName}全部图层">
+                                    <i class="fas fa-eye-slash"></i><span>隐藏全部</span>
+                                </button>
+                                <button type="button" class="more-item more-remove" role="menuitem" data-tooltip="删除数据集（可重新添加）" aria-label="删除数据集${safeName}">
+                                    <i class="fas fa-trash-can"></i><span>删除数据集</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div class="layer-group-items">
                         ${group.items.map(([id, info]) => renderLayerItem(id, info)).join('')}
@@ -737,6 +994,11 @@ const UIManager = (function() {
                 </div>
             `;
         }
+
+        // 面板重建前清理 portal 到 body 的旧「更多」菜单（header 内模板重建后旧菜单孤立残留）
+        document.querySelectorAll('.layer-group-more-menu').forEach(menu => {
+            if (menu.parentElement === document.body) menu.remove();
+        });
 
         container.innerHTML = html;
 
@@ -757,29 +1019,70 @@ const UIManager = (function() {
                 zoomToDataset(name);
             });
 
-            // 显示/隐藏该数据集全部图层（批量，逐条局部更新）
-            groupEl.querySelector('.layer-group-show').addEventListener('click', function(e) {
+            // 数据集介绍：弹窗显示 manifest info（无则「暂无介绍」）
+            groupEl.querySelector('.layer-group-info')?.addEventListener('click', function(e) {
                 e.stopPropagation();
+                const dataset = DataScanner.getDataset(name);
+                const info = dataset && dataset.info ? dataset.info : '暂无介绍';
+                showAppModal({ icon: 'fa-circle-info', title: name, message: info, confirmText: '知道了', cancelText: '' });
+            });
+
+            // 「更多」菜单：打开/收起（点击外部与滚动由全局监听关闭）
+            const moreWrap = groupEl.querySelector('.layer-group-more');
+            const moreBtn = moreWrap ? moreWrap.querySelector('.layer-group-more-btn') : null;
+            // 闭包持有菜单引用（portal 到 body 后不能再从 wrap 内 query 到）
+            const moreMenu = moreWrap ? moreWrap.querySelector('.layer-group-more-menu') : null;
+            if (moreWrap && moreBtn && moreMenu) {
+                moreBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    // 先记当前状态再统一关闭：若菜单已打开则本次点击 = 关闭（否则 closeAll 后 toggle 又打开，永不消失）
+                    const wasOpen = moreMenu.classList.contains('open');
+                    closeAllGroupMoreMenus();
+                    if (wasOpen) return;
+                    // portal：菜单移入 body，避免面板 backdrop-filter 劫持 fixed 定位基准
+                    if (moreMenu.parentElement !== document.body) {
+                        document.body.appendChild(moreMenu);
+                    }
+                    moreMenu.classList.add('open');
+                    this.classList.add('active');
+                    this.setAttribute('aria-expanded', 'true');
+                    positionMoreMenu(moreBtn, moreMenu);
+                });
+            }
+
+            // 菜单项：显示全部 / 隐藏全部 / 下载 / 移除
+            groupEl.querySelector('.layer-group-show')?.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (this.disabled) return;
+                closeAllGroupMoreMenus();
                 LayerManager.setAllVisibility(true, LayerManager.getLayersByGroup(name));
                 updateGroupVisButtons(groupEl, name);
                 showToast(`已显示「${name}」全部图层`, 'success');
             });
-            groupEl.querySelector('.layer-group-hide').addEventListener('click', function(e) {
+            groupEl.querySelector('.layer-group-hide')?.addEventListener('click', function(e) {
                 e.stopPropagation();
+                if (this.disabled) return;
+                closeAllGroupMoreMenus();
                 LayerManager.setAllVisibility(false, LayerManager.getLayersByGroup(name));
                 updateGroupVisButtons(groupEl, name);
                 showToast(`已隐藏「${name}」全部图层`, 'info');
             });
-            updateGroupVisButtons(groupEl, name);
-
-            // 移除数据集：从地图与列表移除全部图层（已保存样式保留，可重新添加）
-            groupEl.querySelector('.layer-group-remove').addEventListener('click', function(e) {
+            groupEl.querySelector('.more-remove')?.addEventListener('click', async function(e) {
                 e.stopPropagation();
-                if (!confirm(`移除数据集「${name}」？\n其图层将从地图与列表中移除，可随时重新添加。`)) return;
+                closeAllGroupMoreMenus();
+                const ok = await showAppModal({
+                    icon: 'fa-trash-can',
+                    title: '移除数据集',
+                    message: `确定移除数据集「${name}」吗？\n其图层将从地图与列表中移除，可随时重新添加。`,
+                    confirmText: '移除',
+                    danger: true,
+                });
+                if (!ok) return;
                 if (LayerManager.removeDataset(name)) {
                     showToast(`已移除「${name}」`, 'info');
                 }
             });
+            updateGroupVisButtons(groupEl, name);
 
             groupEl.querySelectorAll('.layer-item').forEach(item => bindLayerItem(item, item.dataset.id));
         });
@@ -835,6 +1138,15 @@ const UIManager = (function() {
             zoomBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 LayerManager.zoomToLayer(id);
+            });
+        }
+
+        // 下载该图层数据（GeoJSON，与可见性无关）
+        const downloadBtn = item.querySelector('.download-btn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                downloadLayer(id);
             });
         }
 
@@ -1302,6 +1614,58 @@ const UIManager = (function() {
         if (!info || !body) return;
         body.innerHTML = buildStyleFields(getLayerGeometryType(info.data), LayerManager.getLayerStyle(stylePanelLayerId));
         bindStyleInputs(body, stylePanelLayerId);
+    }
+
+    // ---------- 统一应用弹窗（确认 / 信息共用） ----------
+    // 返回 Promise：confirmText → true；cancelText / 遮罩 / Esc → false。
+    // 不传 cancelText 时为「信息模式」（只有确认按钮）。
+    // `nowrap: true` 弹窗消息不换行（弹窗宽度按内容自适应），用于短确认（如下载）
+    function showAppModal({ icon = 'fa-circle-question', title = '提示', message = '', confirmText = '确认', cancelText = '取消', danger = false, nowrap = false } = {}) {
+        const overlay = document.getElementById('appModal');
+        if (!overlay) return Promise.resolve(false);
+        const card = overlay.querySelector('.app-modal');
+        const titleEl = overlay.querySelector('#appModalTitle');
+        const iconEl = overlay.querySelector('.app-modal-icon i');
+        const body = overlay.querySelector('#appModalMessage');
+        const cancelBtn = overlay.querySelector('#appModalCancel');
+        const confirmBtn = overlay.querySelector('#appModalConfirm');
+        if (!titleEl || !body || !cancelBtn || !confirmBtn) return Promise.resolve(false);
+
+        titleEl.textContent = title;
+        iconEl.className = `fas ${icon}`;
+        iconEl.classList.toggle('danger', danger);
+        // textContent 避免内容被当作 HTML 解析
+        body.textContent = message;
+        confirmBtn.textContent = confirmText;
+        confirmBtn.classList.toggle('danger', danger);
+        cancelBtn.textContent = cancelText || '';
+        cancelBtn.hidden = !cancelText;
+        // nowrap 时弹窗宽度按内容自适应（一行显示，不折行）
+        if (card) card.classList.toggle('nowrap', nowrap);
+
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+
+        return new Promise(resolve => {
+            const cleanup = () => {
+                overlay.hidden = true;
+                document.body.classList.remove('modal-open');
+                if (card) card.classList.remove('nowrap');
+                cancelBtn.removeEventListener('click', onCancel);
+                confirmBtn.removeEventListener('click', onConfirm);
+                overlay.removeEventListener('click', onOverlay);
+                document.removeEventListener('keydown', onKey);
+            };
+            const onCancel = () => { cleanup(); resolve(false); };
+            const onConfirm = () => { cleanup(); resolve(true); };
+            const onOverlay = (e) => { if (e.target === overlay) { cleanup(); resolve(false); } };
+            const onKey = (e) => { if (e.key === 'Escape') { cleanup(); resolve(false); } };
+            cancelBtn.addEventListener('click', onCancel);
+            confirmBtn.addEventListener('click', onConfirm);
+            overlay.addEventListener('click', onOverlay);
+            document.addEventListener('keydown', onKey);
+            confirmBtn.focus();
+        });
     }
 
     function showToast(message, type = 'info', duration = 3000) {

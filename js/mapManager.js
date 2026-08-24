@@ -5,6 +5,7 @@
 const MapManager = (function() {
     let mapInstance = null;
     let currentBaseLayer = null;
+    let baseLayerLabelEl = null;
     let baseLayerControlElement = null;
     const baseLayerControls = {};
 
@@ -18,6 +19,10 @@ const MapManager = (function() {
             zoom,
             minZoom,
             maxZoom,
+            // zoomSnap: 0 —— 关键：Leaflet getBoundsZoom 对 fitBounds 结果按 zoomSnap 取整
+            // （默认 1 → floor 到整数，如 13.71 → 13，内容只占 ~42% 屏幕）。
+            // 设为 0 后 fitBounds 可精确到浮点 zoom，内容真正填满可用区域
+            zoomSnap: 0,
             zoomControl: true,
             fadeAnimation: true,
             attributionControl: true,
@@ -41,6 +46,7 @@ const MapManager = (function() {
         }).addTo(mapInstance);
 
         addBaseLayers();
+        addBaseLayerLabel();
         mapInstance.getContainer().querySelectorAll('[title]').forEach(element => {
             element.removeAttribute('title');
         });
@@ -53,15 +59,23 @@ const MapManager = (function() {
         return mapInstance;
     }
 
+    // 空白底图：无瓦片的空图层（显示地图容器背景色）
+    const BlankLayer = L.Layer.extend({
+        onAdd: function() {},
+        onRemove: function() {},
+    });
+
     function addBaseLayers() {
         const layers = {};
         for (const [name, layerConfig] of Object.entries(CONFIG.baseLayers)) {
-            const tileLayer = L.tileLayer(layerConfig.url, layerConfig.options);
-            layers[name] = tileLayer;
-            baseLayerControls[name] = tileLayer;
+            const layer = layerConfig.url
+                ? L.tileLayer(layerConfig.url, layerConfig.options)
+                : new BlankLayer();
+            layers[name] = layer;
+            baseLayerControls[name] = layer;
 
             if (name === CONFIG.defaultBaseLayer) {
-                tileLayer.addTo(mapInstance);
+                layer.addTo(mapInstance);
                 currentBaseLayer = name;
             }
         }
@@ -117,6 +131,31 @@ const MapManager = (function() {
             const radio = option.querySelector('input');
             if (radio) radio.checked = active;
         });
+        updateBaseLayerLabel();
+    }
+
+    // 地图左下角当前底图名称徽章
+    function addBaseLayerLabel() {
+        const labelControl = L.control({ position: 'bottomleft' });
+        labelControl.onAdd = function() {
+            const el = L.DomUtil.create('div', 'leaflet-control current-base-layer');
+            el.setAttribute('aria-label', '当前底图');
+            baseLayerLabelEl = el;
+            updateBaseLayerLabel();
+            return el;
+        };
+        labelControl.addTo(mapInstance);
+    }
+
+    function updateBaseLayerLabel() {
+        if (!baseLayerLabelEl) return;
+        baseLayerLabelEl.innerHTML = '';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-map';
+        const span = document.createElement('span');
+        span.textContent = currentBaseLayer || '';
+        baseLayerLabelEl.appendChild(icon);
+        baseLayerLabelEl.appendChild(span);
     }
 
     function switchBaseLayer(name) {
@@ -134,16 +173,19 @@ const MapManager = (function() {
         return mapInstance;
     }
 
-    function fitBounds(bounds, options = { padding: [40, 40] }) {
+    function fitBounds(bounds, options = { padding: [32, 32] }) {
         if (!mapInstance || !bounds || !bounds.isValid()) return;
         // 归一化基础 padding（支持 [v, h] 数组或单一数字）
         const base = Array.isArray(options.padding) ? options.padding
-            : (typeof options.padding === 'number' ? [options.padding, options.padding] : [40, 40]);
+            : (typeof options.padding === 'number' ? [options.padding, options.padding] : [32, 32]);
         const baseV = base[0], baseH = base[1];
         // 图层面板遮挡避让：桌面端面板为右侧竖栏 → 右侧让位；
         // 移动端（≤768px）面板为底部浮层 → 底部让位。
         // 用遮挡区域形状判定主导方向（coverW≈1 且 coverH 较小 → 底部条；反之 → 右侧条）
-        let padRight = baseH, padBottom = baseV;
+        // 关键：paddingBottomRight 只放「额外避让量」（无避让时为 0）——
+        // Leaflet 的 zoom 计算用「地图尺寸 - (paddingTopLeft + paddingBottomRight)」，
+        // 若把基础 padding 也放进 BR 会导致四周 padding 翻倍、内容被过度压缩
+        let extraRight = 0, extraBottom = 0;
         const panel = document.getElementById('controlPanel');
         if (panel && !panel.classList.contains('collapsed')) {
             const rect = panel.getBoundingClientRect();
@@ -154,18 +196,17 @@ const MapManager = (function() {
                 const coverW = overlapW / mapRect.width;
                 const coverH = overlapH / mapRect.height;
                 if (coverW > 0.5 && coverH < coverW - 0.2) {
-                    padBottom = overlapH + 24; // 底部宽条（移动端底部浮层）
+                    extraBottom = overlapH + 16; // 底部宽条（移动端底部浮层）
                 } else if (coverH > 0.5 && coverW < coverH - 0.2) {
-                    padRight = overlapW + 24;  // 右侧高条（桌面右栏）
+                    extraRight = overlapW + 16;  // 右侧高条（桌面右栏）
                 }
             }
         }
-        // 注意：paddingTopLeft/paddingBottomRight 是 Point(x, y)，必须用 L.point 明确 x=水平/ y=垂直，
-        // 不能传 [x, y] 数组——Leaflet 对 padding 数组约定为 [垂直, 水平]，方向会错
+        // 注意：paddingTopLeft/paddingBottomRight 是 Point(x, y)，必须用 L.point 明确 x=水平/ y=垂直
         mapInstance.fitBounds(bounds, {
             ...options,
             paddingTopLeft: L.point(baseH, baseV),
-            paddingBottomRight: L.point(padRight, padBottom),
+            paddingBottomRight: L.point(extraRight, extraBottom),
         });
     }
 

@@ -27,6 +27,11 @@ const CONFIG = {
             url: 'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
             options: { maxZoom: 18, attribution: '© 高德地图' },
             icon: 'fa-road'
+        },
+        '空白底图': {
+            url: '',
+            options: {},
+            icon: 'fa-square'
         }
     },
 

@@ -22,7 +22,7 @@ const DataScanner = (function() {
             manifest.datasets.forEach(dataset => {
                 if (!dataset || typeof dataset !== 'object') return;
                 const name = String(dataset.name || '').trim() || '未命名数据集';
-                list.push({ name, files: Array.isArray(dataset.files) ? dataset.files : [] });
+                list.push({ name, files: Array.isArray(dataset.files) ? dataset.files : [], info: dataset.info || '' });
             });
         } else if (manifest.dataset && typeof manifest.dataset === 'object' && !Array.isArray(manifest.dataset)) {
             Object.entries(manifest.dataset).forEach(([name, files]) => {
@@ -75,12 +75,15 @@ const DataScanner = (function() {
                         if (!file) return null;
                         const name = (isObject && entry.name) || getDisplayName(file);
                         const color = (isObject && entry.color) || colorPalette[colorIndex++ % colorPalette.length];
+                        // 可选默认样式（style 对象，键与图层样式一致；缺省键回退 color → 代码默认）
+                        const style = (isObject && entry.style && typeof entry.style === 'object') ? entry.style : null;
                         return {
                             // id 含数据集名前缀，跨数据集同名文件不会冲突；保持旧规则以兼容已保存的样式
                             id: generateId(`${dataset.name}_${file}`),
                             name: name || file,
                             url: 'data/' + file,
                             color: color,
+                            style: style,
                             fillColor: color + '33',
                             group: dataset.name,
                             visible: true,
@@ -89,7 +92,7 @@ const DataScanner = (function() {
                         };
                     })
                     .filter(Boolean);
-                return { name: dataset.name, order: datasetIndex, sources };
+                return { name: dataset.name, order: datasetIndex, sources, info: dataset.info || '' };
             }).filter(dataset => dataset.sources.length > 0);
 
             CONFIG.datasets = datasets;
