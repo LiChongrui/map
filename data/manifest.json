@@ -1,17 +1,36 @@
 {
-  "dataset": {
-    "隋唐洛阳城": [
-      { "file": "里坊.geojson", "name": "里坊" },
-      { "file": "市.geojson", "name": "市" },
-      { "file": "紫薇城.geojson", "name": "紫薇城" },
-      { "file": "太微城.geojson", "name": "太微城" },
-      { "file": "外郭城墙.geojson", "name": "外郭城墙" },
-      { "file": "桥.geojson", "name": "桥" },
-      { "file": "城门.geojson", "name": "城门" },
-      { "file": "上阳宫.geojson", "name": "上阳宫" },
-      { "file": "上阳宫城墙.geojson", "name": "上阳宫城墙" },
-      { "file": "上阳宫门.geojson", "name": "上阳宫门" }
-    ]
-  },
-  "updated": "2026-08-21"
+  "datasets": [
+    {
+      "name": "隋唐洛阳-城",
+      "files": [
+        { "file": "隋唐洛阳/里坊.geojson", "name": "里坊" },
+        { "file": "隋唐洛阳/市.geojson", "name": "市" },
+        { "file": "隋唐洛阳/紫薇城.geojson", "name": "紫薇城" },
+        { "file": "隋唐洛阳/太微城.geojson", "name": "太微城" },
+        { "file": "隋唐洛阳/外郭城墙.geojson", "name": "外郭城墙" },
+        { "file": "隋唐洛阳/桥.geojson", "name": "桥" },
+        { "file": "隋唐洛阳/城门.geojson", "name": "城门" }
+      ]
+    },
+    {
+      "name": "隋唐洛阳-西苑",
+      "files": [
+        { "file": "隋唐洛阳/上阳宫.geojson", "name": "上阳宫" },
+        { "file": "隋唐洛阳/上阳宫城墙.geojson", "name": "上阳宫城墙" },
+        { "file": "隋唐洛阳/上阳宫门.geojson", "name": "上阳宫门" }
+      ]
+    },
+    {
+      "name": "汉魏洛阳-城",
+      "files": [
+        { "file": "汉魏洛阳/内城.geojson", "name": "内城" },
+        { "file": "汉魏洛阳/里坊.geojson", "name": "外城-里坊" },
+        { "file": "汉魏洛阳/市.geojson", "name": "市" },
+        { "file": "汉魏洛阳/城墙.geojson", "name": "城墙" },
+        { "file": "汉魏洛阳/桥.geojson", "name": "桥" },
+        { "file": "汉魏洛阳/城门.geojson", "name": "城门" }
+      ]
+    }
+  ],
+  "updated": "2026-08-24"
 }

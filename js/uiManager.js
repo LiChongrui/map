@@ -5,14 +5,31 @@
 const UIManager = (function() {
     let isDark = false;
     let isFullscreen = false;
-    let isPanelCollapsed = false;
-    let sortableInstance = null;
+    let sortableInstances = [];
     let searchKeyword = '';
-    let selectedDataset = '';
+    let stylePanelLayerId = null;
+
+    // 已折叠的数据集分组（localStorage 持久化）
+    const COLLAPSE_STORAGE_KEY = 'lyc_collapsed_groups_v1';
+    const collapsedGroups = new Set(readCollapsedGroups());
+
+    function readCollapsedGroups() {
+        try {
+            const value = JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY));
+            return Array.isArray(value) ? value : [];
+        } catch (error) { return []; }
+    }
+
+    function persistCollapsedGroups() {
+        try {
+            localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...collapsedGroups]));
+        } catch (error) { /* 存储失败不阻塞交互 */ }
+    }
 
     const BUTTON_IDS = [
         'selectAll', 'deselectAll',
-        'zoomToAll', 'exportAll', 'refreshAll', 'clearAll'
+        'zoomToAll',
+        'removeAllDatasets'
     ];
 
     function init() {
@@ -27,45 +44,108 @@ const UIManager = (function() {
         }
 
         updateButtonsState(false);
-        syncPanelButtonState();
+        applyPanelButtonState();
+    }
+
+    // ---------- 工具 ----------
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, character => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[character]));
     }
 
     function getCurrentLayers() {
-        return selectedDataset ? LayerManager.getLayersByGroup(selectedDataset) : LayerManager.getAllLayers();
+        return LayerManager.getAllLayers();
     }
 
     function getGeometrySummary(data) {
-        const types = new Set((data.features || []).map(feature => feature.geometry?.type));
-        if (types.has('Point') || types.has('MultiPoint')) return { label: '点', icon: 'fa-circle-dot' };
-        if (types.has('LineString') || types.has('MultiLineString')) return { label: '线', icon: 'fa-road' };
-        if (types.has('Polygon') || types.has('MultiPolygon')) return { label: '面', icon: 'fa-draw-polygon' };
-        return { label: '要素', icon: 'fa-shapes' };
+        const type = getLayerGeometryType(data);
+        if (type === 'point') return { label: '点', icon: 'fa-location-dot', type };
+        if (type === 'line') return { label: '线', icon: 'fa-route', type };
+        if (type === 'polygon') return { label: '面', icon: 'fa-draw-polygon', type };
+        return { label: '要素', icon: 'fa-shapes', type: 'mixed' };
     }
 
-    function updateDatasetOptions() {
-        const select = document.getElementById('datasetSelect');
-        const count = document.getElementById('datasetLayerCount');
-        if (!select) return;
-        const groups = [...new Set([...LayerManager.getAllLayers().values()].map(info => info.config.group || '古代洛阳城'))];
-        const previousDataset = selectedDataset;
-        if (!selectedDataset || !groups.includes(selectedDataset)) selectedDataset = groups[0] || '';
-        if (selectedDataset !== previousDataset && selectedDataset) {
-            LayerManager.activateGroup(selectedDataset);
+    // 图层几何大类：point | line | polygon | mixed
+    function getLayerGeometryType(data) {
+        const types = new Set((data.features || []).map(feature => feature.geometry?.type).filter(Boolean));
+        if (types.size === 0) return 'mixed';
+        const kinds = new Set();
+        types.forEach(t => {
+            if (t === 'Point' || t === 'MultiPoint') kinds.add('point');
+            else if (t === 'LineString' || t === 'MultiLineString') kinds.add('line');
+            else if (t === 'Polygon' || t === 'MultiPolygon') kinds.add('polygon');
+            else kinds.add('mixed');
+        });
+        if (kinds.size === 1) return [...kinds][0];
+        return 'mixed';
+    }
+
+    // ================================================================
+    // 添加数据集菜单：列出 manifest 中的数据集，点击加载到图层列表
+    // ================================================================
+
+    function updateAddDatasetMenu() {
+        const wrap = document.getElementById('datasetAdd');
+        if (!wrap) return;
+        const menu = wrap.querySelector('.dataset-select-menu');
+        const trigger = wrap.querySelector('.dataset-select-trigger');
+        if (!menu || !trigger) return;
+
+        const datasets = DataScanner.getDatasets();
+        const loadedGroups = new Set(LayerManager.getLoadedGroupNames());
+
+        if (datasets.length === 0) {
+            menu.innerHTML = '<div class="dataset-menu-empty">暂无可用数据集</div>';
+            return;
         }
-        const value = select.querySelector('.dataset-select-value');
-        const menu = select.querySelector('.dataset-select-menu');
-        if (value) value.textContent = selectedDataset || '暂无数据集';
-        if (menu) {
-            menu.innerHTML = groups.map(group => `<button type="button" class="dataset-select-option${group === selectedDataset ? ' active' : ''}" role="option" aria-selected="${group === selectedDataset}" data-value="${group}">${group}<i class="fas fa-check"></i></button>`).join('');
-            menu.querySelectorAll('.dataset-select-option').forEach(option => option.addEventListener('click', () => {
-                selectedDataset = option.dataset.value;
-                select.classList.remove('open');
-                select.querySelector('.dataset-select-trigger').setAttribute('aria-expanded', 'false');
-                LayerManager.activateGroup(selectedDataset);
-                updateLayerPanel();
-            }));
+
+        menu.innerHTML = datasets.map(dataset => {
+            const loaded = loadedGroups.has(dataset.name);
+            const safeName = escapeHtml(dataset.name);
+            return `<button type="button" class="dataset-select-option${loaded ? ' loaded' : ''}" role="option" aria-selected="false" data-value="${safeName}" ${loaded ? 'disabled' : ''} data-tooltip="${loaded ? '已加载' : '添加到地图'}">
+                <span class="dataset-option-name">${safeName}<em>${dataset.sources.length} 图层</em></span>
+                <i class="fas ${loaded ? 'fa-check' : 'fa-plus'}"></i>
+            </button>`;
+        }).join('');
+
+        menu.querySelectorAll('.dataset-select-option').forEach(option => {
+            option.addEventListener('click', event => {
+                event.stopPropagation();
+                const name = option.dataset.value;
+                if (option.classList.contains('loaded')) return;
+                closeAddDatasetMenu(wrap);
+                addDataset(name);
+            });
+        });
+    }
+
+    function closeAddDatasetMenu(wrap) {
+        wrap.classList.remove('open');
+        wrap.querySelector('.dataset-select-trigger')?.setAttribute('aria-expanded', 'false');
+    }
+
+    async function addDataset(name) {
+        const result = await LayerManager.loadDataset(name);
+        if (result.loaded > 0) {
+            showToast(`已加载「${name}」· ${result.loaded} 个图层`, 'success');
+            // 缩放到新加载数据集的范围，让用户立即看到数据
+            const bounds = L.latLngBounds();
+            let hasValid = false;
+            LayerManager.getLayersByGroup(name).forEach(info => {
+                if (info.visible && info.layer.getBounds().isValid()) {
+                    bounds.extend(info.layer.getBounds());
+                    hasValid = true;
+                }
+            });
+            if (hasValid) MapManager.fitBounds(bounds, { padding: [50, 50] });
+            if (result.failed > 0) showToast(`${result.failed} 个图层加载失败`, 'warning');
+        } else if (result.failed > 0) {
+            showToast(`「${name}」加载失败`, 'error');
+            updateLayerPanel();
+        } else {
+            showToast(`「${name}」已在图层列表中`, 'info');
         }
-        if (count) count.textContent = getCurrentLayers().size;
     }
 
     function initTooltips() {
@@ -119,35 +199,42 @@ const UIManager = (function() {
     function initSortable() {
         const container = document.getElementById('layerList');
         if (!container) return;
-
-        if (sortableInstance) {
-            sortableInstance.destroy();
+        // 防御：Sortable 未加载（本地 vendor 文件缺失等）时不中断其余初始化
+        if (typeof Sortable === 'undefined') {
+            console.warn('[UIManager] SortableJS 未加载，图层拖拽排序不可用');
+            return;
         }
 
-        sortableInstance = Sortable.create(container, {
-            handle: '.drag-handle',
-            animation: 200,
-            easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-            ghostClass: 'dragging',
-            dragClass: 'drag-over',
-            onEnd: function(evt) {
-                const items = container.querySelectorAll('.layer-item');
-                const orderedIds = [];
-                items.forEach(item => {
-                    const id = item.dataset.id;
-                    if (id) orderedIds.push(id);
-                });
-                LayerManager.setLayerOrder(orderedIds);
-            }
+        sortableInstances.forEach(instance => instance.destroy());
+        sortableInstances = [];
+
+        // 每个数据集分组一个 Sortable 实例：图层只能在本分组内拖拽排序，
+        // 整体顺序 = 各分组在 DOM 中的先后 + 组内顺序
+        container.querySelectorAll('.layer-group-items').forEach(groupContainer => {
+            sortableInstances.push(Sortable.create(groupContainer, {
+                handle: '.drag-handle',
+                animation: 200,
+                easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+                ghostClass: 'dragging',
+                dragClass: 'drag-over',
+                forceFallback: true,
+                fallbackOnBody: true,
+                onEnd: function() {
+                    const orderedIds = [];
+                    container.querySelectorAll('.layer-item').forEach(item => {
+                        const id = item.dataset.id;
+                        if (id) orderedIds.push(id);
+                    });
+                    LayerManager.setLayerOrder(orderedIds);
+                }
+            }));
         });
     }
 
-    function updateButtonsState(enabled) {
+    function updateButtonsState(enabled = LayerManager.getAllLayers().size > 0) {
         BUTTON_IDS.forEach(id => {
             const btn = document.getElementById(id);
-            if (btn) {
-                btn.disabled = !enabled;
-            }
+            if (btn) btn.disabled = !enabled;
         });
 
         const layerList = document.getElementById('layerList');
@@ -165,25 +252,21 @@ const UIManager = (function() {
             if (selectAll) selectAll.disabled = !enabled || !hasHiddenLayer;
             if (deselectAll) deselectAll.disabled = !enabled || !hasVisibleLayer;
         }
-    }
 
-    function updateStats(total, visible, layerCount) {
-        // 由 layerManager 调用
+        // 展开/折叠所有分组按钮：可用态只取决于分组折叠情况，统一交给 updateGroupButtonsState
+        updateGroupButtonsState();
     }
 
     function bindEvents() {
-        const datasetSelect = document.getElementById('datasetSelect');
-        if (datasetSelect) {
-            datasetSelect.querySelector('.dataset-select-trigger').addEventListener('click', function(event) {
+        const datasetAdd = document.getElementById('datasetAdd');
+        if (datasetAdd) {
+            datasetAdd.querySelector('.dataset-select-trigger').addEventListener('click', function(event) {
                 event.stopPropagation();
-                const open = datasetSelect.classList.toggle('open');
+                const open = datasetAdd.classList.toggle('open');
                 this.setAttribute('aria-expanded', String(open));
             });
             document.addEventListener('click', event => {
-                if (!datasetSelect.contains(event.target)) {
-                    datasetSelect.classList.remove('open');
-                    datasetSelect.querySelector('.dataset-select-trigger').setAttribute('aria-expanded', 'false');
-                }
+                if (!datasetAdd.contains(event.target)) closeAddDatasetMenu(datasetAdd);
             });
         }
         const themeBtn = document.getElementById('toggleTheme');
@@ -212,7 +295,7 @@ const UIManager = (function() {
         if (searchInput) {
             searchInput.addEventListener('input', function(e) {
                 searchKeyword = e.target.value.trim();
-                LayerManager.filterLayers(searchKeyword);
+                applySearchFilter();
                 if (searchClear) {
                     searchClear.style.display = searchKeyword ? 'block' : 'none';
                 }
@@ -275,76 +358,56 @@ const UIManager = (function() {
                 }
                 if (hasValid) {
                     MapManager.fitBounds(bounds, { padding: [50, 50] });
-                    showToast('已缩放至全部数据', 'success');
+                    showToast('已缩放至全部可见图层', 'success');
                 } else {
                     showToast('没有可见的数据图层', 'info');
                 }
             });
         }
 
-        const exportBtn = document.getElementById('exportAll');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', function() {
-                const allLayers = getCurrentLayers();
-                if (allLayers.size === 0) {
-                    showToast('没有数据可导出', 'error');
+        // ===== 数据集分组批量操作（工具栏） =====
+        const removeAllBtn = document.getElementById('removeAllDatasets');
+        if (removeAllBtn) {
+            removeAllBtn.addEventListener('click', function() {
+                const names = LayerManager.getLoadedGroupNames();
+                if (names.length === 0) {
+                    showToast('暂无已加载的数据集', 'info');
                     return;
                 }
-                const data = LayerManager.getAllData();
-                if (data.features.length === 0) {
-                    showToast('没有数据可导出', 'error');
-                    return;
-                }
-                const jsonStr = JSON.stringify(data, null, 2);
-                const blob = new Blob([jsonStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `map_data_${new Date().toISOString().slice(0,10)}.geojson`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast(`✅ 成功导出 ${data.features.length} 个要素`, 'success');
+                if (!confirm(`确定要删除所有数据集吗？\n共 ${names.length} 个数据集（${names.join('、')}）将被移除，可随时重新添加。`)) return;
+                names.forEach(name => LayerManager.removeDataset(name));
+                collapsedGroups.clear();
+                persistCollapsedGroups();
+                showToast('已删除所有数据集', 'info');
             });
         }
 
-        const refreshBtn = document.getElementById('refreshAll');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', function() {
-                const allLayers = getCurrentLayers();
-                if (allLayers.size === 0) {
-                    showToast('暂无图层可刷新', 'info');
-                    return;
-                }
-                showToast('🔄 正在重新加载...', 'info');
-                updateButtonsState(false);
-                LayerManager.clearAll();
-                LayerManager.loadAllLayers().then(result => {
-                    if (result.failed > 0) {
-                        showToast(`⚠️ 加载失败：${result.failed} 个图层`, 'error');
-                    }
-                    updateButtonsState(true);
-                }).catch(() => {
-                    showToast('❌ 重新加载失败', 'error');
-                    updateButtonsState(true);
-                });
+        const expandAllBtn = document.getElementById('expandAllGroups');
+        if (expandAllBtn) {
+            expandAllBtn.addEventListener('click', function() {
+                setAllGroupsCollapsed(false);
             });
         }
 
-        const clearBtn = document.getElementById('clearAll');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function() {
-                const allLayers = LayerManager.getAllLayers();
-                if (allLayers.size === 0) {
-                    showToast('暂无图层可清除', 'info');
-                    return;
-                }
-                if (confirm('确定要清除所有图层吗？')) {
-                    LayerManager.clearAll();
-                    showToast('已清除所有图层', 'info');
-                    updateButtonsState(false);
-                }
+        const collapseAllBtn = document.getElementById('collapseAllGroups');
+        if (collapseAllBtn) {
+            collapseAllBtn.addEventListener('click', function() {
+                setAllGroupsCollapsed(true);
+            });
+        }
+
+        // ===== 图层样式配置弹窗 =====
+        const styleModal = document.getElementById('styleModal');
+        if (styleModal) {
+            styleModal.addEventListener('click', function(e) {
+                if (e.target === styleModal) closeStylePanel();
+            });
+            const closeBtn = document.getElementById('styleModalClose');
+            if (closeBtn) closeBtn.addEventListener('click', closeStylePanel);
+            const doneBtn = document.getElementById('styleModalDone');
+            if (doneBtn) doneBtn.addEventListener('click', closeStylePanel);
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !styleModal.hidden) closeStylePanel();
             });
         }
     }
@@ -352,11 +415,246 @@ const UIManager = (function() {
     // ================================================================
     // updateLayerPanel - 去掉状态文字和删除按钮
     // ================================================================
+
+    // hex → rgba（用于图例还原颜色透明度）
+    function hexToRgba(hex, alpha) {
+        const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+        if (!match) return hex;
+        const int = parseInt(match[1], 16);
+        const r = (int >> 16) & 255, g = (int >> 8) & 255, b = int & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    // 透明度钳制到 0~1（非法值按 1 处理）
+    function clamp01(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return 1;
+        return Math.min(1, Math.max(0, num));
+    }
+
+    // 按当前样式生成图层图例（与地图显示严格对应：点大小/边线宽、线宽、填充/描边/边线透明度）
+    // 注意：不加投影阴影——阴影会让细线/小点看起来比地图实际渲染的更大
+    function legendSwatchHTML(style, type) {
+        if (!style) return '';
+        const pointColor = hexToRgba(style.pointColor || '#4f6ef7', clamp01(style.pointOpacity ?? 1));
+        const pointStroke = hexToRgba(style.pointStrokeColor || '#ffffff', clamp01(style.pointStrokeOpacity ?? 1));
+        const pointStrokeW = Math.max(0, Number(style.pointStrokeWidth) || 0);
+        const pointSize = Math.max(4, Number(style.pointSize) || 10);
+        const lineColor = hexToRgba(style.lineColor || '#4f6ef7', clamp01(style.lineOpacity ?? 0.9));
+        const lineWidth = Math.max(0.5, Number(style.lineWidth) || 2.5);
+        const fillColor = style.fillColor || '#4f6ef7';
+        const fillOpacity = clamp01(style.fillOpacity ?? 0.35);
+        const strokeColor = hexToRgba(style.strokeColor || fillColor, clamp01(style.strokeOpacity ?? 0.95));
+        const strokeWidth = Math.max(0, Number(style.strokeWidth) || 0);
+        if (type === 'point') {
+            // 总尺寸 = 点内径 + 两侧边线；描边用 box-shadow inset 实现——CSS border 宽度会被浏览器
+            // 取整（1.5px 实际渲染 1px），而 box-shadow 支持亚像素，与地图 SVG 图标精确一致
+            const total = pointSize + pointStrokeW * 2;
+            return `<span class="swatch swatch--point" style="width:${total}px;height:${total}px;background:${escapeHtml(pointColor)};box-shadow:inset 0 0 0 ${pointStrokeW}px ${escapeHtml(pointStroke)};"></span>`;
+        }
+        if (type === 'line') {
+            // 厚度 = 真实线宽；长度随线宽等比放大（粗线不再是固定短条），上限受容器宽度约束
+            const lineLen = Math.round(Math.min(40, Math.max(22, lineWidth * 5)));
+            return `<span class="swatch swatch--line" style="width:${lineLen}px;height:${lineWidth}px;background:${escapeHtml(lineColor)};"></span>`;
+        }
+        if (type === 'polygon') {
+            // 描边用 box-shadow inset（亚像素精确）；border 宽度会被浏览器取整导致与地图描边偏差
+            return `<span class="swatch swatch--polygon" style="background:${escapeHtml(hexToRgba(fillColor, fillOpacity))};box-shadow:inset 0 0 0 ${strokeWidth}px ${escapeHtml(strokeColor)};"></span>`;
+        }
+        return `<span class="swatch swatch--mixed" style="background:linear-gradient(135deg, ${escapeHtml(hexToRgba(fillColor, fillOpacity))} 0 34%, ${escapeHtml(lineColor)} 34% 67%, ${escapeHtml(pointColor)} 67% 100%);border:1px solid ${escapeHtml(strokeColor)};"></span>`;
+    }
+
+    // 渲染单个图层条目（所有动态文本/属性均已转义）
+    // 主流顺序：左侧 [拖拽把手][显隐眼睛] 图例 名称，右侧操作 [缩放][样式][标注]
+    function renderLayerItem(id, info) {
+        const { name } = info.config;
+        const { visible, featureCount, labelsVisible, labelField, data } = info;
+        const isVisible = visible === true;
+        const geometry = getGeometrySummary(data);
+        const labelsEnabled = isVisible && !!labelField;
+        const safeId = escapeHtml(id);
+        const safeName = escapeHtml(name);
+        const style = LayerManager.getLayerStyle(id);
+        const highlighted = LayerManager.getHighlightedLayerId() === id;
+
+        return `
+            <div class="layer-item ${isVisible ? '' : 'hidden'}${highlighted ? ' highlighted' : ''}" data-id="${safeId}">
+                <i class="fas fa-grip-vertical drag-handle"></i>
+                <button type="button" class="vis-btn ${isVisible ? 'active' : ''}" data-tooltip="${isVisible ? '隐藏图层' : '显示图层'}" aria-label="${isVisible ? '隐藏' : '显示'}${safeName}">
+                    <i class="fas ${isVisible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                </button>
+                <span class="layer-swatch" data-tooltip="${isVisible ? '点击图例高亮该图层（双击图层行缩放并高亮）' : '图层隐藏时不可高亮'}" role="button" aria-label="${isVisible ? '高亮' + safeName : safeName + '不可高亮'}">${legendSwatchHTML(style, geometry.type)}</span>
+                <div class="layer-info">
+                    <div class="layer-name">
+                        <span>${safeName}</span>
+                    </div>
+                    <div class="layer-meta">
+                        <span class="meta-count"><i class="fas ${geometry.icon}"></i> ${featureCount} 个要素</span>
+                    </div>
+                </div>
+                <div class="layer-actions">
+                    <button type="button" class="zoom-btn" data-tooltip="${isVisible ? '缩放至该图层（双击图层行亦可）' : '图层隐藏时不可缩放'}" aria-label="缩放至${safeName}" ${isVisible ? '' : 'disabled'}>
+                        <i class="fas fa-crosshairs"></i>
+                    </button>
+                    <button type="button" class="style-btn" data-tooltip="${isVisible ? '样式设置' : '图层隐藏时不可设置样式'}" aria-label="设置${safeName}样式" ${isVisible ? '' : 'disabled'}>
+                        <i class="fas fa-palette"></i>
+                    </button>
+                    <button type="button" class="label-btn ${labelsVisible ? 'active' : ''}" data-tooltip="${!isVisible ? '图层隐藏时不可显示标注' : (labelField ? (labelsVisible ? '隐藏标注' : '显示标注') : '无可用标注字段，无法标注')}" aria-label="${labelField ? (labelsVisible ? '隐藏' + safeName + '标注' : '显示' + safeName + '标注') : safeName + '无法标注'}" ${labelsEnabled ? '' : 'disabled'}>
+                        <i class="fas fa-tag"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // 仅更新单个图层条目的状态（显隐、开关、按钮禁用态），避免全量重建列表
+    function updateLayerItem(id) {
+        const info = LayerManager.getLayerInfo(id);
+        if (!info) return;
+        const container = document.getElementById('layerList');
+        if (!container) return;
+        const safeId = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+        const item = container.querySelector(`.layer-item[data-id="${safeId}"]`);
+        if (!item) return;
+
+        const isVisible = info.visible === true;
+        const labelsEnabled = isVisible && !!info.labelField;
+
+        item.classList.toggle('hidden', !isVisible);
+        // 高亮状态与 LayerManager 保持同步（单击图层项触发）
+        item.classList.toggle('highlighted', LayerManager.getHighlightedLayerId() === id);
+
+        // 图例色块跟随样式配置实时刷新；tooltip 同步可见性（点击高亮 / 隐藏不可用）
+        const swatchWrap = item.querySelector('.layer-swatch');
+        if (swatchWrap) {
+            swatchWrap.innerHTML = legendSwatchHTML(LayerManager.getLayerStyle(id), getLayerGeometryType(info.data));
+            swatchWrap.dataset.tooltip = isVisible ? '点击图例高亮该图层（双击图层行缩放并高亮）' : '图层隐藏时不可高亮';
+        }
+
+        // 显示/隐藏图标按钮：图标与激活态跟随可见性
+        const visBtn = item.querySelector('.vis-btn');
+        if (visBtn) {
+            visBtn.classList.toggle('active', isVisible);
+            const visIcon = visBtn.querySelector('i');
+            if (visIcon) visIcon.className = `fas ${isVisible ? 'fa-eye' : 'fa-eye-slash'}`;
+            visBtn.dataset.tooltip = isVisible ? '隐藏图层' : '显示图层';
+        }
+
+        const styleBtn = item.querySelector('.style-btn');
+        if (styleBtn) {
+            styleBtn.disabled = !isVisible;
+            styleBtn.dataset.tooltip = isVisible ? '样式设置' : '图层隐藏时不可设置样式';
+        }
+
+        const zoomBtn = item.querySelector('.zoom-btn');
+        if (zoomBtn) {
+            zoomBtn.disabled = !isVisible;
+            zoomBtn.dataset.tooltip = isVisible ? '缩放至该图层（双击图层行亦可）' : '图层隐藏时不可缩放';
+        }
+
+        const labelBtn = item.querySelector('.label-btn');
+        if (labelBtn) {
+            labelBtn.disabled = !labelsEnabled;
+            labelBtn.classList.toggle('active', isVisible && info.labelsVisible);
+            labelBtn.dataset.tooltip = !isVisible ? '图层隐藏时不可显示标注'
+                : (info.labelField ? (info.labelsVisible ? '隐藏标注' : '显示标注') : '无可用标注字段，无法标注');
+        }
+    }
+
+    // 应用搜索过滤：分组感知 + 搜索时强制展开折叠分组 + 无结果提示
+    function applySearchFilter() {
+        const container = document.getElementById('layerList');
+        if (!container) return;
+        container.classList.toggle('searching', !!searchKeyword);
+        const matched = LayerManager.filterLayers(searchKeyword);
+
+        let note = container.querySelector('.filter-empty');
+        if (searchKeyword && matched === 0) {
+            if (!note) {
+                note = document.createElement('div');
+                note.className = 'filter-empty';
+                note.innerHTML = '<i class="fas fa-search"></i>没有匹配图层';
+                container.appendChild(note);
+            }
+        } else if (note) {
+            note.remove();
+        }
+    }
+
+    // 折叠/展开数据集分组（持久化）
+    function toggleGroupCollapse(groupEl) {
+        const name = groupEl.dataset.group;
+        const collapsed = groupEl.classList.toggle('collapsed');
+        const collapseBtn = groupEl.querySelector('.layer-group-collapse');
+        if (collapseBtn) collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+        if (collapsed) collapsedGroups.add(name);
+        else collapsedGroups.delete(name);
+        persistCollapsedGroups();
+        updateGroupButtonsState();
+    }
+
+    // 批量折叠/展开所有数据集分组（同步 DOM 与持久化）
+    function setAllGroupsCollapsed(collapsed) {
+        const groups = document.querySelectorAll('#layerList .layer-group');
+        if (groups.length === 0) return;
+        collapsedGroups.clear();
+        groups.forEach(groupEl => {
+            groupEl.classList.toggle('collapsed', collapsed);
+            const collapseBtn = groupEl.querySelector('.layer-group-collapse');
+            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+            if (collapsed) collapsedGroups.add(groupEl.dataset.group);
+        });
+        persistCollapsedGroups();
+        updateGroupButtonsState();
+    }
+
+    // 工具栏「展开/折叠所有数据集」按钮可用态：
+    // 无分组、或已全部处于目标状态时禁用
+    function updateGroupButtonsState() {
+        const groups = document.querySelectorAll('#layerList .layer-group');
+        const hasGroups = groups.length > 0;
+        const collapsedCount = [...groups].filter(groupEl => groupEl.classList.contains('collapsed')).length;
+        const expandBtn = document.getElementById('expandAllGroups');
+        const collapseBtn = document.getElementById('collapseAllGroups');
+        if (expandBtn) expandBtn.disabled = !hasGroups || collapsedCount === 0;
+        if (collapseBtn) collapseBtn.disabled = !hasGroups || collapsedCount === groups.length;
+    }
+
+    // 分组头操作按钮可用态：全可见时禁用显示、全隐藏时禁用隐藏
+    function updateGroupVisButtons(groupEl, name) {
+        const infos = [...LayerManager.getLayersByGroup(name).values()];
+        if (infos.length === 0) return;
+        const allVisible = infos.every(info => info.visible);
+        const noneVisible = infos.every(info => !info.visible);
+        const showBtn = groupEl.querySelector('.layer-group-show');
+        const hideBtn = groupEl.querySelector('.layer-group-hide');
+        if (showBtn) showBtn.disabled = allVisible;
+        if (hideBtn) hideBtn.disabled = noneVisible;
+    }
+
+    // 缩放到指定数据集内全部可见图层的范围（数据集缩放功能已隐藏，保留函数供扩展）
+    function zoomToDataset(name) {
+        const bounds = L.latLngBounds();
+        let hasValid = false;
+        LayerManager.getLayersByGroup(name).forEach(info => {
+            if (info.visible && info.layer.getBounds().isValid()) {
+                bounds.extend(info.layer.getBounds());
+                hasValid = true;
+            }
+        });
+        if (hasValid) {
+            MapManager.fitBounds(bounds, { padding: [50, 50] });
+            showToast(`已缩放至「${name}」可见图层`, 'success');
+        } else {
+            showToast(`「${name}」暂无可见图层`, 'info');
+        }
+    }
+
     function updateLayerPanel() {
         const container = document.getElementById('layerList');
         if (!container) return;
 
-        updateDatasetOptions();
+        updateAddDatasetMenu();
         const allLayers = getCurrentLayers();
 
         const hasData = allLayers.size > 0;
@@ -365,68 +663,49 @@ const UIManager = (function() {
         if (allLayers.size === 0) {
             container.innerHTML = `
                 <div class="empty-state">
-                    <i class="fas fa-inbox empty-icon"></i>
-                    <div class="empty-title">暂无图层数据</div>
-                    <div class="empty-desc">
-                        请将 GeoJSON 文件放入 <code>data/</code> 目录<br>
-                        并在 <code>data/manifest.json</code> 中配置
-                    </div>
+                    <i class="fas fa-database empty-icon"></i>
+                    <div class="empty-title">尚未添加数据集</div>
+                    <div class="empty-desc">点击上方「选择数据集」把数据加载到地图</div>
                 </div>
             `;
             return;
         }
 
-        const keyword = searchKeyword.toLowerCase();
-        const visibleLayers = [...allLayers].filter(([, info]) =>
-            !keyword || info.config.name.toLowerCase().includes(keyword)
-        );
-        if (visibleLayers.length === 0) {
-            container.innerHTML = '<div class="empty-state"><i class="fas fa-search empty-icon"></i><div class="empty-title">没有匹配图层</div><div class="empty-desc">请尝试其他关键词</div></div>';
-            return;
+        // 按数据集分组（保持图层表中的顺序 = 添加顺序 / 拖拽顺序）
+        const groups = [];
+        const groupIndex = new Map();
+        for (const [id, info] of allLayers) {
+            const name = info.config.group || '未分组';
+            if (!groupIndex.has(name)) {
+                groupIndex.set(name, groups.length);
+                groups.push({ name, items: [] });
+            }
+            groups[groupIndex.get(name)].items.push([id, info]);
         }
+
         let html = '';
-        for (const [id, info] of visibleLayers) {
-            const { name, color } = info.config;
-            const { visible } = info;
-            const { featureCount } = info;
-            const isVisible = visible === true;
-            const geometry = getGeometrySummary(info.data);
-            const labelsEnabled = isVisible && info.hasName;
-            
+        for (const group of groups) {
+            const collapsed = collapsedGroups.has(group.name);
+            const safeName = escapeHtml(group.name);
             html += `
-                <div class="layer-item ${isVisible ? '' : 'hidden'}" data-id="${id}" data-name="${name}">
-                    <i class="fas fa-grip-vertical drag-handle"></i>
-                    
-
-                    
-                    <div class="layer-color" style="background:${color};"></div>
-                    
-                    <div class="layer-info">
-                        <div class="layer-name">
-                            <span>${name}</span>
-                        </div>
-                        <div class="layer-meta">
-                            <span class="meta-type"><i class="fas ${geometry.icon}"></i> ${geometry.label} · 要素数量：${featureCount}</span>
-                        </div>
+                <div class="layer-group${collapsed ? ' collapsed' : ''}" data-group="${safeName}">
+                    <div class="layer-group-header" data-tooltip="${collapsed ? '展开分组' : '折叠分组'}">
+                        <span class="layer-group-collapse" role="button" aria-expanded="${!collapsed}" aria-label="${collapsed ? '展开' : '折叠'}${safeName}"><i class="fas fa-chevron-down"></i></span>
+                        <span class="layer-group-icon"><i class="fas fa-database"></i></span>
+                        <span class="layer-group-name" title="${safeName}">${safeName}</span>
+                        <span class="layer-group-count">${group.items.length}</span>
+                        <button type="button" class="layer-group-vis layer-group-show" data-tooltip="显示该数据集全部图层" aria-label="显示${safeName}全部图层">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button type="button" class="layer-group-vis layer-group-hide" data-tooltip="隐藏该数据集全部图层" aria-label="隐藏${safeName}全部图层">
+                            <i class="fas fa-eye-slash"></i>
+                        </button>
+                        <button type="button" class="layer-group-remove" data-tooltip="移除数据集（可重新添加）" aria-label="移除数据集${safeName}">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
                     </div>
-
-                    <div class="layer-checkbox-wrapper">
-                        <input type="checkbox" class="layer-checkbox" id="layer_${id}" ${isVisible ? 'checked' : ''} />
-                        <label class="layer-toggle ${isVisible ? 'active' : ''}" for="layer_${id}">
-                            <span class="toggle-knob"></span>
-                        </label>
-                    </div>
-                    
-                    <div class="layer-actions">
-                        <button type="button" class="zoom-btn" data-tooltip="${isVisible ? '缩放至该图层' : '图层隐藏时不可缩放'}" aria-label="缩放至${name}" ${isVisible ? '' : 'disabled'}>
-                            <i class="fas fa-crosshairs"></i>
-                        </button>
-                        <button type="button" class="download-btn" data-tooltip="下载该图层" aria-label="下载${name}">
-                            <i class="fas fa-download"></i>
-                        </button>
-                        <button type="button" class="label-btn ${info.labelsVisible ? 'active' : ''}" data-tooltip="${!isVisible ? '图层隐藏时不可显示标注' : (info.hasName ? (info.labelsVisible ? '隐藏标注' : '显示标注') : '缺少 name 字段，无法标注')}" aria-label="${info.hasName ? (info.labelsVisible ? '隐藏' + name + '标注' : '显示' + name + '标注') : name + '无法标注'}" ${labelsEnabled ? '' : 'disabled'}>
-                            <i class="fas fa-tag"></i>
-                        </button>
+                    <div class="layer-group-items">
+                        ${group.items.map(([id, info]) => renderLayerItem(id, info)).join('')}
                     </div>
                 </div>
             `;
@@ -434,85 +713,108 @@ const UIManager = (function() {
 
         container.innerHTML = html;
 
-        // ===== 绑定事件 =====
-        container.querySelectorAll('.layer-item').forEach(item => {
-            const id = item.dataset.id;
+        // ===== 绑定分组事件 =====
+        container.querySelectorAll('.layer-group').forEach(groupEl => {
+            const name = groupEl.dataset.group;
 
-            const toggle = item.querySelector('.layer-toggle');
-            if (toggle) {
-                toggle.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const checkbox = document.getElementById(`layer_${id}`);
-                    if (checkbox) {
-                        checkbox.checked = !checkbox.checked;
-                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-            }
+            // 点击分组头（按钮除外）折叠/展开
+            groupEl.querySelector('.layer-group-header').addEventListener('click', function(e) {
+                if (e.target.closest('button')) return;
+                toggleGroupCollapse(groupEl);
+                this.dataset.tooltip = groupEl.classList.contains('collapsed') ? '展开分组' : '折叠分组';
+            });
 
-            const checkbox = document.getElementById(`layer_${id}`);
-            if (checkbox) {
-                checkbox.addEventListener('change', function(e) {
-                    e.stopPropagation();
-                    console.log(`🔄 切换图层: ${id}, 新状态: ${this.checked}`);
-                    LayerManager.toggleLayer(id);
-                });
-            }
+            // 显示/隐藏该数据集全部图层（批量，逐条局部更新）
+            groupEl.querySelector('.layer-group-show').addEventListener('click', function(e) {
+                e.stopPropagation();
+                LayerManager.setAllVisibility(true, LayerManager.getLayersByGroup(name));
+                updateGroupVisButtons(groupEl, name);
+                showToast(`已显示「${name}」全部图层`, 'success');
+            });
+            groupEl.querySelector('.layer-group-hide').addEventListener('click', function(e) {
+                e.stopPropagation();
+                LayerManager.setAllVisibility(false, LayerManager.getLayersByGroup(name));
+                updateGroupVisButtons(groupEl, name);
+                showToast(`已隐藏「${name}」全部图层`, 'info');
+            });
+            updateGroupVisButtons(groupEl, name);
 
-            item.addEventListener('click', function(e) {
-                if (e.target.closest('.layer-actions') || 
-                    e.target.closest('.drag-handle') || 
-                    e.target.closest('.layer-toggle') ||
-                    e.target.closest('.layer-checkbox')) {
-                    return;
-                }
-                const checkbox = document.getElementById(`layer_${id}`);
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                    const event = new Event('change', { bubbles: true });
-                    checkbox.dispatchEvent(event);
+            // 移除数据集：从地图与列表移除全部图层（已保存样式保留，可重新添加）
+            groupEl.querySelector('.layer-group-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!confirm(`移除数据集「${name}」？\n其图层将从地图与列表中移除，可随时重新添加。`)) return;
+                if (LayerManager.removeDataset(name)) {
+                    showToast(`已移除「${name}」`, 'info');
                 }
             });
 
-            const zoomBtn = item.querySelector('.zoom-btn');
-            if (zoomBtn) {
-                zoomBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    LayerManager.zoomToLayer(id);
-                });
-            }
-
-            const downloadBtn = item.querySelector('.download-btn');
-            if (downloadBtn) {
-                downloadBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const info = LayerManager.getLayerInfo(id);
-                    if (!info?.data) return;
-                    const blob = new Blob([JSON.stringify(info.data, null, 2)], { type: 'application/geo+json' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `${info.config.name || id}.geojson`;
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    URL.revokeObjectURL(url);
-                    showToast(`已下载：${info.config.name}`, 'success');
-                });
-            }
-
-            const labelBtn = item.querySelector('.label-btn');
-            if (labelBtn && !labelBtn.disabled) {
-                labelBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    LayerManager.toggleLabels(id);
-                });
-            }
+            groupEl.querySelectorAll('.layer-item').forEach(item => bindLayerItem(item, item.dataset.id));
         });
 
+        // 面板重建后恢复当前搜索过滤
+        applySearchFilter();
+        updateGroupButtonsState();
+
         initSortable();
+    }
+
+    // 绑定单个图层行的事件（显隐开关 / 图例高亮 / 双击缩放 / 样式 / 标注）
+    function bindLayerItem(item, id) {
+        // 单击图例图标：高亮并闪烁该图层数据（重复点击再次闪烁；图层隐藏时不可用）
+        const swatch = item.querySelector('.layer-swatch');
+        if (swatch) {
+            swatch.addEventListener('click', function(e) {
+                e.stopPropagation();
+                LayerManager.setLayerHighlight(id);
+            });
+        }
+        // 单击图层行其他区域（按钮/把手/图例除外）：移除高亮
+        item.addEventListener('click', function(e) {
+            if (e.target.closest('button, input, label, .drag-handle, .layer-swatch')) return;
+            LayerManager.clearLayerHighlight();
+        });
+        // 双击图层行（按钮除外）：缩放至该图层并高亮闪烁；图层隐藏时不可用
+        item.addEventListener('dblclick', function(e) {
+            if (e.target.closest('button, input, label, .drag-handle')) return;
+            const info = LayerManager.getLayerInfo(id);
+            if (!info || !info.visible) return;
+            LayerManager.zoomToLayer(id);
+            LayerManager.setLayerHighlight(id);
+        });
+
+        // 显示/隐藏图标按钮：直接切换图层可见性
+        const visBtn = item.querySelector('.vis-btn');
+        if (visBtn) {
+            visBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                LayerManager.toggleLayer(id);
+            });
+        }
+
+        const styleBtn = item.querySelector('.style-btn');
+        if (styleBtn) {
+            styleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                openStylePanel(id);
+            });
+        }
+
+        const zoomBtn = item.querySelector('.zoom-btn');
+        if (zoomBtn) {
+            zoomBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                LayerManager.zoomToLayer(id);
+            });
+        }
+
+        const labelBtn = item.querySelector('.label-btn');
+        if (labelBtn && !labelBtn.disabled) {
+            labelBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                LayerManager.toggleLabels(id);
+            });
+        }
     }
 
     function updateLegend() {
@@ -530,13 +832,15 @@ const UIManager = (function() {
         }
 
         let html = '';
-        for (const [, info] of allLayers) {
+        for (const [id, info] of allLayers) {
             if (info.visible) {
                 const { name, color } = info.config;
+                const style = LayerManager.getLayerStyle(id);
+                const primary = LayerManager.getThemeColor(style, getLayerGeometryType(info.data)) || color;
                 html += `
                     <div class="legend-item">
-                        <span class="legend-color" style="background:${color};"></span>
-                        ${name}
+                        <span class="legend-color" style="background:${escapeHtml(primary)};"></span>
+                        ${escapeHtml(name)}
                     </div>
                 `;
             }
@@ -578,34 +882,386 @@ const UIManager = (function() {
 
     function togglePanel() {
         const panel = document.getElementById('controlPanel');
-        const panelBtn = document.getElementById('togglePanel');
-        if (panel) {
-            panel.classList.toggle('collapsed');
-            isPanelCollapsed = panel.classList.contains('collapsed');
-            const icon = document.querySelector('#togglePanel i');
-            if (icon) {
-                icon.className = isPanelCollapsed ? 'fas fa-layer-group' : 'fas fa-times';
-            }
-            syncPanelButtonState();
-            const collapseIcon = document.querySelector('#panelCollapse i');
-            if (collapseIcon) {
-                collapseIcon.className = 'fas fa-times';
-            }
-            const collapseButton = document.getElementById('panelCollapse');
-            if (collapseButton) {
-                collapseButton.setAttribute('aria-label', '关闭图层面板');
-                collapseButton.dataset.tooltip = '关闭面板';
-            }
-        }
+        if (!panel) return;
+        panel.classList.toggle('collapsed');
+        applyPanelButtonState();
     }
 
-    function syncPanelButtonState() {
+    // 同步顶部「图层面板」按钮的图标/文案/高亮，与面板开合状态保持一致
+    function applyPanelButtonState() {
         const panel = document.getElementById('controlPanel');
         const panelBtn = document.getElementById('togglePanel');
         if (!panel || !panelBtn) return;
         const hidden = panel.classList.contains('collapsed');
-        panelBtn.dataset.tooltip = hidden ? '打开面板' : '关闭面板';
-        panelBtn.setAttribute('aria-label', hidden ? '打开面板' : '关闭面板');
+        const icon = panelBtn.querySelector('i');
+        if (icon) icon.className = hidden ? 'fas fa-layer-group' : 'fas fa-times';
+        panelBtn.classList.toggle('active', !hidden);
+        panelBtn.dataset.tooltip = hidden ? '展开图层面板' : '收起图层面板';
+        panelBtn.setAttribute('aria-label', hidden ? '展开图层面板' : '收起图层面板');
+        panelBtn.setAttribute('aria-expanded', String(!hidden));
+    }
+
+    // ================================================================
+    // 图层样式配置面板
+    // ================================================================
+
+    // ================================================================
+    // 自定义取色器（应用内调色板，样式跟随亮/暗主题；替代原生 <input type="color">，
+    // 避免系统取色器弹层被遮挡、且与界面主题不一致的问题）
+    // ================================================================
+    const CP_PRESETS = [
+        '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+        '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#3b82f6',
+        '#4f6ef7', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+        '#ec4899', '#78716c', '#334155', '#64748b', '#ffffff',
+    ];
+    let activeColorPicker = null;
+
+    // 规范化 hex（#rgb → #rrggbb；非法值回退默认蓝）
+    function normalizeHex(value) {
+        let hex = String(value ?? '').trim().replace(/^#/, '');
+        if (/^[0-9a-f]{3}$/i.test(hex)) {
+            hex = hex.split('').map(ch => ch + ch).join('');
+        }
+        if (!/^[0-9a-f]{6}$/i.test(hex)) hex = '4f6ef7';
+        return `#${hex.toLowerCase()}`;
+    }
+
+    function rgbToHex(r, g, b) {
+        const to2 = n => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+        return `#${to2(r)}${to2(g)}${to2(b)}`;
+    }
+
+    function hsvToHex(h, s, v) {
+        const c = v * s;
+        const hp = (((h % 360) + 360) % 360) / 60;
+        const x = c * (1 - Math.abs(hp % 2 - 1));
+        let r = 0, g = 0, b = 0;
+        if (hp < 1) [r, g, b] = [c, x, 0];
+        else if (hp < 2) [r, g, b] = [x, c, 0];
+        else if (hp < 3) [r, g, b] = [0, c, x];
+        else if (hp < 4) [r, g, b] = [0, x, c];
+        else if (hp < 5) [r, g, b] = [x, 0, c];
+        else [r, g, b] = [c, 0, x];
+        const m = v - c;
+        return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+    }
+
+    function hexToHsv(hex) {
+        const norm = normalizeHex(hex).slice(1);
+        const r = parseInt(norm.slice(0, 2), 16) / 255;
+        const g = parseInt(norm.slice(2, 4), 16) / 255;
+        const b = parseInt(norm.slice(4, 6), 16) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const d = max - min;
+        let h = 0;
+        if (d > 0) {
+            if (max === r) h = 60 * (((g - b) / d) % 6);
+            else if (max === g) h = 60 * ((b - r) / d + 2);
+            else h = 60 * ((r - g) / d + 4);
+        }
+        if (h < 0) h += 360;
+        return { h, s: max === 0 ? 0 : d / max, v: max };
+    }
+
+    function closeColorPicker() {
+        if (!activeColorPicker) return;
+        const { popover, onGlobalPointerDown, onKeydown } = activeColorPicker;
+        document.removeEventListener('pointerdown', onGlobalPointerDown, true);
+        document.removeEventListener('keydown', onKeydown, true);
+        popover.remove();
+        activeColorPicker = null;
+    }
+
+    function openColorPicker(btn, id) {
+        closeColorPicker();
+        const key = btn.dataset.colorKey;
+        const style = LayerManager.getLayerStyle(id);
+        if (!style || !key) return;
+
+        let hsv = hexToHsv(normalizeHex(style[key]));
+
+        const popover = document.createElement('div');
+        popover.className = 'color-picker-pop';
+        popover.innerHTML = `
+            <div class="cp-sv"><div class="cp-sv-cursor"></div></div>
+            <input type="range" class="cp-hue" min="0" max="360" step="1" aria-label="色相" />
+            <div class="cp-presets"></div>
+            <div class="cp-hex-row">
+                <span class="cp-hex-label">HEX</span>
+                <input type="text" class="cp-hex-input" maxlength="7" spellcheck="false" />
+            </div>
+        `;
+        document.body.appendChild(popover);
+
+        const svArea = popover.querySelector('.cp-sv');
+        const svCursor = popover.querySelector('.cp-sv-cursor');
+        const hueRange = popover.querySelector('.cp-hue');
+        const presetsBox = popover.querySelector('.cp-presets');
+        const hexInput = popover.querySelector('.cp-hex-input');
+
+        presetsBox.innerHTML = CP_PRESETS.map(hex =>
+            `<button type="button" class="cp-preset" data-hex="${hex}" style="background:${hex};" aria-label="选择颜色 ${hex}"></button>`
+        ).join('');
+
+        // 实时应用到图层样式与按钮显示；取色器内 HEX 输入框同步跟随
+        // （用户正在输入时不回写，避免打断输入）
+        const applyColor = function(hex) {
+            LayerManager.updateLayerStyle(id, { [key]: hex });
+            btn.dataset.color = hex;
+            const swatch = btn.querySelector('.color-field-swatch');
+            if (swatch) swatch.style.background = hex;
+            const hexEl = document.querySelector(`[data-hex-for="${key}"]`);
+            if (hexEl) hexEl.textContent = hex.toUpperCase();
+            if (document.activeElement !== hexInput) {
+                hexInput.value = hex.toUpperCase();
+            }
+        };
+
+        const render = function() {
+            svArea.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hsvToHex(hsv.h, 1, 1)})`;
+            svCursor.style.left = `${hsv.s * 100}%`;
+            svCursor.style.top = `${(1 - hsv.v) * 100}%`;
+            svCursor.style.background = hsvToHex(hsv.h, hsv.s, hsv.v);
+            hueRange.value = String(Math.round(hsv.h));
+        };
+
+        // 定位：按钮下方优先，空间不足翻到上方，整体限制在视口内（fixed 定位不受弹窗裁剪/遮挡）
+        popover.style.visibility = 'hidden';
+        const popRect = popover.getBoundingClientRect();
+        const rect = btn.getBoundingClientRect();
+        let left = Math.min(Math.max(8, rect.left), window.innerWidth - popRect.width - 8);
+        let top = rect.bottom + 8;
+        if (top + popRect.height > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - popRect.height - 8);
+        }
+        popover.style.left = `${Math.round(left)}px`;
+        popover.style.top = `${Math.round(top)}px`;
+        popover.style.visibility = '';
+
+        // SV 面板拖拽选色
+        const pickFromSv = function(event) {
+            const box = svArea.getBoundingClientRect();
+            hsv.s = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
+            hsv.v = 1 - Math.min(1, Math.max(0, (event.clientY - box.top) / box.height));
+            render();
+            applyColor(hsvToHex(hsv.h, hsv.s, hsv.v));
+        };
+        svArea.addEventListener('pointerdown', function(event) {
+            event.preventDefault();
+            svArea.setPointerCapture(event.pointerId);
+            pickFromSv(event);
+            const onMove = e => pickFromSv(e);
+            const onUp = function() {
+                svArea.removeEventListener('pointermove', onMove);
+                svArea.removeEventListener('pointerup', onUp);
+            };
+            svArea.addEventListener('pointermove', onMove);
+            svArea.addEventListener('pointerup', onUp);
+        });
+
+        hueRange.addEventListener('input', function() {
+            hsv.h = parseFloat(this.value) || 0;
+            render();
+            applyColor(hsvToHex(hsv.h, hsv.s, hsv.v));
+        });
+
+        presetsBox.addEventListener('click', function(event) {
+            const preset = event.target.closest('.cp-preset');
+            if (!preset) return;
+            hsv = hexToHsv(preset.dataset.hex);
+            hexInput.value = preset.dataset.hex.toUpperCase();
+            render();
+            applyColor(preset.dataset.hex);
+        });
+
+        hexInput.value = normalizeHex(style[key]).toUpperCase();
+        const commitHex = function() {
+            const hex = normalizeHex(hexInput.value);
+            hexInput.value = hex.toUpperCase();
+            hsv = hexToHsv(hex);
+            render();
+            applyColor(hex);
+        };
+        hexInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitHex();
+                hexInput.blur();
+            }
+        });
+        hexInput.addEventListener('input', function() {
+            const raw = this.value.trim();
+            if (/^#?[0-9a-f]{6}$/i.test(raw)) {
+                const hex = normalizeHex(raw);
+                hsv = hexToHsv(hex);
+                render();
+                applyColor(hex);
+            }
+        });
+        hexInput.addEventListener('blur', commitHex);
+
+        // 点击取色器外部 / 按 Escape 关闭
+        const onGlobalPointerDown = function(event) {
+            if (!popover.contains(event.target) && !btn.contains(event.target)) closeColorPicker();
+        };
+        const onKeydown = function(event) {
+            if (event.key === 'Escape') closeColorPicker();
+        };
+        document.addEventListener('pointerdown', onGlobalPointerDown, true);
+        document.addEventListener('keydown', onKeydown, true);
+
+        render();
+        activeColorPicker = { popover, btn, onGlobalPointerDown, onKeydown };
+    }
+
+    function colorField(key, label, value) {
+        const hex = normalizeHex(value);
+        return `
+            <div class="style-field">
+                <label>${label}</label>
+                <div class="style-control">
+                    <button type="button" class="color-field-btn" data-color-key="${key}" data-color="${escapeHtml(hex)}">
+                        <span class="color-field-swatch" style="background:${escapeHtml(hex)};"></span>
+                        <span class="hex-val" data-hex-for="${key}">${escapeHtml(hex.toUpperCase())}</span>
+                        <i class="fas fa-chevron-down color-field-caret"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function rangeField(key, label, value, min, max, step, unit) {
+        const val = Math.round(Number(value) * 100) / 100;
+        return `
+            <div class="style-field">
+                <label>${label}</label>
+                <div class="style-control">
+                    <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" data-unit="${unit}" />
+                    <span class="range-val" data-val-for="${key}">${val}${unit}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // 透明度字段：滑块以 0~100% 显示，存储为 0~1
+    function opacityField(key, label, value) {
+        const percent = Math.round(clamp01(value) * 100);
+        return rangeField(key, label, percent, 0, 100, 1, '%');
+    }
+
+    // 生成一个样式分组：标题 + 字段列表
+    function styleGroup(title, fields) {
+        return `
+            <div class="style-group">
+                <div class="style-group-title">${title}</div>
+                <div class="style-group-fields">${fields.join('')}</div>
+            </div>
+        `;
+    }
+
+    // 按几何类型生成分组样式控件。
+    // 命名约定：描边类设置（面边界/点边线/线）一律统称「线条」；所有颜色均可配置透明度。
+    // 面 → 填充（颜色/透明度）+ 线条（颜色/透明度/宽度）
+    // 线 → 线条（颜色/透明度/宽度）；点 → 点（颜色/透明度/大小）+ 线条（颜色/透明度/宽度）
+    function buildStyleFields(type, style) {
+        const groups = [];
+        if (type === 'polygon' || type === 'mixed') {
+            groups.push(styleGroup('填充', [
+                colorField('fillColor', '颜色', style.fillColor),
+                opacityField('fillOpacity', '透明度', style.fillOpacity),
+            ]));
+            groups.push(styleGroup(type === 'mixed' ? '线条（边界）' : '线条', [
+                colorField('strokeColor', '颜色', style.strokeColor),
+                opacityField('strokeOpacity', '透明度', style.strokeOpacity),
+                rangeField('strokeWidth', '宽度', style.strokeWidth, 0, 8, 0.5, 'px'),
+            ]));
+        }
+        if (type === 'line' || type === 'mixed') {
+            groups.push(styleGroup('线条', [
+                colorField('lineColor', '颜色', style.lineColor),
+                opacityField('lineOpacity', '透明度', style.lineOpacity),
+                rangeField('lineWidth', '宽度', style.lineWidth, 0.5, 12, 0.5, 'px'),
+            ]));
+        }
+        if (type === 'point' || type === 'mixed') {
+            groups.push(styleGroup('点', [
+                colorField('pointColor', '颜色', style.pointColor),
+                opacityField('pointOpacity', '透明度', style.pointOpacity),
+                rangeField('pointSize', '大小', style.pointSize, 4, 32, 1, 'px'),
+            ]));
+            groups.push(styleGroup(type === 'mixed' ? '线条（点边线）' : '线条', [
+                colorField('pointStrokeColor', '颜色', style.pointStrokeColor),
+                opacityField('pointStrokeOpacity', '透明度', style.pointStrokeOpacity),
+                rangeField('pointStrokeWidth', '宽度', style.pointStrokeWidth, 0, 6, 0.5, 'px'),
+            ]));
+        }
+        return groups.join('');
+    }
+
+    // 绑定样式控件输入事件（实时预览）：滑块直接绑定；颜色按钮打开自定义取色器
+    function bindStyleInputs(body, id) {
+        body.querySelectorAll('input[data-key]').forEach(input => {
+            input.addEventListener('input', function() {
+                const key = this.dataset.key;
+                const value = parseFloat(this.value);
+                const valEl = body.querySelector(`[data-val-for="${key}"]`);
+                if (valEl) valEl.textContent = `${value}${this.dataset.unit || ''}`;
+                // 透明度类滑块（*Opacity）以百分比显示，统一存储为 0~1
+                const stored = key.endsWith('Opacity') ? value / 100 : value;
+                LayerManager.updateLayerStyle(id, { [key]: stored });
+            });
+        });
+        body.querySelectorAll('button[data-color-key]').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                // 再次点击同一按钮 = 收起取色器
+                if (activeColorPicker && activeColorPicker.btn === this) {
+                    closeColorPicker();
+                    return;
+                }
+                openColorPicker(this, id);
+            });
+        });
+    }
+
+    function openStylePanel(id) {
+        const info = LayerManager.getLayerInfo(id);
+        if (!info) return;
+        closeColorPicker();
+        stylePanelLayerId = id;
+        const modal = document.getElementById('styleModal');
+        const title = document.getElementById('styleModalTitle');
+        const sub = document.getElementById('styleModalSub');
+        const body = document.getElementById('styleModalBody');
+        if (!modal || !body) return;
+        const geometry = getGeometrySummary(info.data);
+        title.textContent = info.config.name;
+        if (sub) sub.textContent = `${geometry.label}图层 · ${info.featureCount} 个要素`;
+        const iconEl = modal.querySelector('.style-modal-icon i');
+        if (iconEl) iconEl.className = `fas ${geometry.icon}`;
+        body.innerHTML = buildStyleFields(getLayerGeometryType(info.data), LayerManager.getLayerStyle(id));
+        bindStyleInputs(body, id);
+        modal.hidden = false;
+        document.body.classList.add('modal-open');
+    }
+
+    function closeStylePanel() {
+        closeColorPicker();
+        const modal = document.getElementById('styleModal');
+        if (modal) modal.hidden = true;
+        stylePanelLayerId = null;
+        document.body.classList.remove('modal-open');
+    }
+
+    function refreshStylePanel() {
+        if (!stylePanelLayerId) return;
+        closeColorPicker();
+        const info = LayerManager.getLayerInfo(stylePanelLayerId);
+        const body = document.getElementById('styleModalBody');
+        if (!info || !body) return;
+        body.innerHTML = buildStyleFields(getLayerGeometryType(info.data), LayerManager.getLayerStyle(stylePanelLayerId));
+        bindStyleInputs(body, stylePanelLayerId);
     }
 
     function showToast(message, type = 'info', duration = 3000) {
@@ -621,10 +1277,13 @@ const UIManager = (function() {
 
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
-        toast.innerHTML = `
-            <i class="${icons[type] || icons.info}"></i>
-            <span>${message}</span>
-        `;
+        const icon = document.createElement('i');
+        icon.className = icons[type] || icons.info;
+        const text = document.createElement('span');
+        // textContent 避免消息内容被当作 HTML 解析
+        text.textContent = message;
+        toast.appendChild(icon);
+        toast.appendChild(text);
 
         container.appendChild(toast);
 
@@ -637,9 +1296,9 @@ const UIManager = (function() {
     return {
         init,
         updateLayerPanel,
+        updateLayerItem,
         updateLegend,
         updateButtonsState,
-        updateStats,
         toggleTheme,
         toggleFullscreen,
         togglePanel,

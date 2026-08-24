@@ -81,11 +81,13 @@ const MapManager = (function() {
                 });
                 options.addEventListener('click', event => event.stopPropagation());
                 Object.keys(layers).forEach(name => {
+                    const layerConfig = CONFIG.baseLayers[name];
                     const option = document.createElement('label');
                     option.className = 'base-layer-option';
                     option.dataset.layer = name;
                     option.dataset.tooltip = `切换到${name}`;
-                    const icon = name === '高德卫星' ? 'fa-satellite' : 'fa-road';
+                    const icon = layerConfig.icon
+                        || ((name.indexOf('卫星') !== -1 || name.indexOf('影像') !== -1) ? 'fa-satellite' : 'fa-road');
                     option.innerHTML = `<input type="radio" name="base-layer" value="${name}"><i class="fas ${icon}" aria-hidden="true"></i><span>${name}</span>`;
                     option.querySelector('input').addEventListener('change', () => {
                         switchBaseLayer(name);

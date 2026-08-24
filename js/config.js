@@ -13,13 +13,20 @@ const CONFIG = {
 
     // ---------- 底图配置 ----------
     baseLayers: {
-        '高德卫星': {
+        'Esri影像（无偏）': {
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            options: { maxZoom: 19, attribution: '© Esri World Imagery' },
+            icon: 'fa-satellite'
+        },
+        '高德影像': {
             url: 'https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
-            options: { maxZoom: 18, attribution: '© 高德地图' }
+            options: { maxZoom: 18, attribution: '© 高德地图' },
+            icon: 'fa-satellite'
         },
         '高德街道': {
             url: 'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-            options: { maxZoom: 18, attribution: '© 高德地图' }
+            options: { maxZoom: 18, attribution: '© 高德地图' },
+            icon: 'fa-road'
         }
     },
 

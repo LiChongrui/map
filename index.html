@@ -46,10 +46,12 @@
         <!-- 面板头部 -->
         <div class="panel-header">
             <div class="panel-header-left">
-                <h3><i class="fas fa-layer-group"></i> 数据集</h3>
-                <div id="datasetSelect" class="dataset-select" data-tooltip="选择数据集">
+                <h3><i class="fas fa-circle-plus"></i> 添加数据集</h3>
+                <div id="datasetAdd" class="dataset-select dataset-add" data-tooltip="选择要添加的数据集">
                     <button type="button" class="dataset-select-trigger" aria-haspopup="listbox" aria-expanded="false">
-                        <span class="dataset-select-value">选择数据集</span><i class="fas fa-chevron-down"></i>
+                        <i class="fas fa-plus"></i>
+                        <span class="dataset-select-value">选择数据集</span>
+                        <i class="fas fa-chevron-down"></i>
                     </button>
                     <div class="dataset-select-menu" role="listbox"></div>
                 </div>
@@ -65,10 +67,10 @@
         <div class="panel-toolbar">
             <div class="search-wrapper">
                 <i class="fas fa-search search-icon"></i>
-                <input 
-                    type="text" 
-                    id="layerSearch" 
-                    placeholder="搜索图层..." 
+                <input
+                    type="text"
+                    id="layerSearch"
+                    placeholder="搜索图层..."
                     class="search-input"
                 />
                 <button class="search-clear" id="searchClear" style="display:none;">
@@ -76,11 +78,14 @@
                 </button>
             </div>
             <div class="toolbar-actions">
-                <button type="button" class="toolbar-btn" id="selectAll" data-tooltip="显示全部图层" aria-label="显示全部图层">
-                    <i class="fas fa-check-double"></i>
+                <button type="button" class="toolbar-btn" id="expandAllGroups" data-tooltip="展开所有数据集" aria-label="展开所有数据集">
+                    <i class="fas fa-angles-down"></i>
                 </button>
-                <button type="button" class="toolbar-btn" id="deselectAll" data-tooltip="隐藏全部图层" aria-label="隐藏全部图层">
-                    <i class="fas fa-square"></i>
+                <button type="button" class="toolbar-btn" id="collapseAllGroups" data-tooltip="折叠所有数据集" aria-label="折叠所有数据集">
+                    <i class="fas fa-angles-up"></i>
+                </button>
+                <button type="button" class="toolbar-btn" id="removeAllDatasets" data-tooltip="删除所有数据集" aria-label="删除所有数据集">
+                    <i class="fas fa-trash-can"></i>
                 </button>
             </div>
         </div>
@@ -90,57 +95,64 @@
             <!-- 由 JS 动态渲染 -->
         </div>
 
-        <!-- 面板底部 -->
+        <!-- 面板底部：数据集 / 图层 / 可见 三项合并统计 -->
         <div class="panel-footer">
             <div class="footer-stats">
-                <span class="stat-item">
-                    <i class="fas fa-layer-group"></i>
-                    <span id="datasetLayerCount">0</span> 个图层
+                <span class="stat-item" data-tooltip="已加载数据集">
+                    <i class="fas fa-database"></i><span id="statDatasets">0</span>
                 </span>
-                <span class="stat-divider">|</span>
-                <span class="stat-item">
-                    <i class="fas fa-database"></i>
-                    <span id="footerTotal">0</span> 个要素
+                <span class="stat-sep">·</span>
+                <span class="stat-item" data-tooltip="图层总数">
+                    <i class="fas fa-layer-group"></i><span id="statLayers">0</span>
                 </span>
-                <span class="stat-divider">|</span>
-                <span class="stat-item">
-                    <i class="fas fa-eye"></i>
-                    <span id="footerVisible">0</span> 可见
+                <span class="stat-sep">·</span>
+                <span class="stat-item" data-tooltip="可见图层">
+                    <i class="fas fa-eye"></i><span id="statVisible">0</span>
                 </span>
             </div>
             <div class="footer-actions">
-                <button type="button" class="footer-btn" id="zoomToAll" data-tooltip="缩放至全部" aria-label="缩放至全部图层">
+                <button type="button" class="footer-btn" id="selectAll" data-tooltip="显示所有图层" aria-label="显示所有图层">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button type="button" class="footer-btn" id="deselectAll" data-tooltip="隐藏所有图层" aria-label="隐藏所有图层">
+                    <i class="fas fa-eye-slash"></i>
+                </button>
+                <button type="button" class="footer-btn" id="zoomToAll" data-tooltip="缩放至全部可见图层" aria-label="缩放至全部可见图层">
                     <i class="fas fa-crosshairs"></i>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ===== 右下角统计信息 ===== -->
-    <div id="statsBar" class="stats-bar">
-        <span class="stat-item">
-            <i class="fas fa-database"></i>
-            <span id="statsTotal">0</span>
-        </span>
-        <span class="stat-divider">·</span>
-        <span class="stat-item">
-            <i class="fas fa-eye"></i>
-            <span id="statsVisible">0</span>
-        </span>
-        <span class="stat-divider">·</span>
-        <span class="stat-item">
-            <i class="fas fa-layer-group"></i>
-            <span id="statsLayers">0</span>
-        </span>
-    </div>
-
     <!-- ===== Toast 通知 ===== -->
     <div id="toastContainer" class="toast-container"></div>
 
+    <!-- ===== 图层样式配置弹窗 ===== -->
+    <div id="styleModal" class="style-modal-overlay" hidden>
+        <div class="style-modal" role="dialog" aria-modal="true" aria-labelledby="styleModalTitle">
+            <div class="style-modal-header">
+                <div class="style-modal-heading">
+                    <span class="style-modal-icon"><i class="fas fa-palette"></i></span>
+                    <div class="style-modal-head-text">
+                        <h4 class="style-modal-title" id="styleModalTitle">图层样式</h4>
+                        <span class="style-modal-sub" id="styleModalSub"></span>
+                    </div>
+                </div>
+                <button type="button" class="panel-btn-icon" id="styleModalClose" aria-label="关闭样式设置" data-tooltip="关闭">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="style-modal-body" id="styleModalBody"></div>
+            <div class="style-modal-footer">
+                <button type="button" class="modal-btn primary" id="styleModalDone">完成</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== 第三方 JS ===== -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- ===== SortableJS 拖拽排序 ===== -->
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <!-- ===== SortableJS 拖拽排序（本地副本，避免 CDN 加载失败导致拖拽失效） ===== -->
+    <script src="js/vendor/Sortable.min.js"></script>
 
     <!-- ===== 自定义 JS ===== -->
     <script src="js/config.js"></script>

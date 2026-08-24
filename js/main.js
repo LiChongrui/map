@@ -1,58 +1,55 @@
 /**
- * 主入口 - 从 manifest.json 加载数据
+ * 主入口 - 解析 manifest 数据集，初次打开默认添加第一组数据集
  */
 
 (function() {
-    
+
     // ---------- 初始化地图 ----------
     MapManager.init('map');
+    // 点击地图空白处（未点中要素）移除图层高亮
+    MapManager.getMap().on('click', () => LayerManager.clearLayerHighlight());
     UIManager.init();
 
-    // ---------- 加载数据 ----------
-    async function loadData() {
+    // 缩放到指定数据集内全部可见图层的范围
+    function fitToDataset(name) {
+        const bounds = L.latLngBounds();
+        let hasValid = false;
+        LayerManager.getLayersByGroup(name).forEach(info => {
+            if (info.visible && info.layer.getBounds().isValid()) {
+                bounds.extend(info.layer.getBounds());
+                hasValid = true;
+            }
+        });
+        if (hasValid) MapManager.fitBounds(bounds, { padding: [50, 50] });
+    }
+
+    // ---------- 初始化数据 ----------
+    async function init() {
         try {
-            const sources = await DataScanner.scanAndLoad();
-            
-            if (sources.length === 0) {
-                UIManager.showToast('⚠️ 未找到数据配置', 'warning');
-                UIManager.updateLayerPanel();
-                LayerManager.updateStats();
-                
-                console.log('📄 请创建 data/manifest.json 文件');
-                console.log('📄 示例格式:');
-                console.log(JSON.stringify({ files: ['your_file.geojson'] }, null, 2));
-                return;
+            const datasets = await DataScanner.scanAndLoad();
+
+            // 初次打开默认添加第一组数据集，打开即可看到数据
+            if (datasets.length > 0) {
+                const result = await LayerManager.loadDataset(datasets[0].name);
+                if (result.loaded > 0) fitToDataset(datasets[0].name);
             }
 
-            CONFIG.dataSources = sources;
-            
-            await LayerManager.loadAllLayers();
-            
-            const allLayers = LayerManager.getAllLayers();
-            const map = MapManager.getMap();
-            if (allLayers.size > 0) {
-                const bounds = L.latLngBounds();
-                let hasValid = false;
-                for (const [, info] of allLayers) {
-                    if (info.visible && map.hasLayer(info.layer) && info.layer.getBounds().isValid()) {
-                        bounds.extend(info.layer.getBounds());
-                        hasValid = true;
-                    }
-                }
-                if (hasValid) {
-                    MapManager.fitBounds(bounds, { padding: [50, 50] });
-                }
+            UIManager.updateLayerPanel();
+            LayerManager.updateStats();
+
+            if (datasets.length === 0) {
+                UIManager.showToast('未找到可用数据集', 'warning');
+                console.warn('[数据] 未配置任何数据集');
             }
-            
         } catch (error) {
-            console.error('❌ 加载数据失败:', error);
-            UIManager.showToast('❌ 加载数据失败，请检查控制台', 'error');
+            console.error('❌ 初始化失败:', error);
+            UIManager.showToast('❌ 初始化失败，请检查控制台', 'error');
             UIManager.updateLayerPanel();
             LayerManager.updateStats();
         }
     }
 
-    loadData();
+    init();
 
     window.__APP = {
         map: MapManager,

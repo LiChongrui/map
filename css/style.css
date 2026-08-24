@@ -41,6 +41,9 @@
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
     --info-color: #3b82f6;
+
+    /* 地图标注扫边（halo）颜色：亮色主题白边 / 暗色主题深色边 */
+    --label-halo: rgba(255, 255, 255, 0.92);
 }
 
 [data-theme="dark"] {
@@ -65,6 +68,8 @@
     --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.5);
     --shadow-xl: 0 12px 64px rgba(0, 0, 0, 0.6);
+
+    --label-halo: rgba(15, 15, 26, 0.92);
 }
 
 /* ===== Reset & Base ===== */
@@ -267,7 +272,10 @@ body {
     position: absolute;
     top: 0;
     left: calc(100% + 8px);
-    width: 154px;
+    /* 宽度随选项内容自适应（不再固定 154px）；min-width 保底防止过窄，max-width 兜底防溢出视口 */
+    width: max-content;
+    min-width: 130px;
+    max-width: min(240px, calc(100vw - 120px));
     padding: 10px;
     border: 1px solid rgba(148, 163, 184, 0.35);
     border-radius: var(--radius-md);
@@ -340,7 +348,7 @@ body {
     flex-shrink: 0;
 }
 
-.base-layer-option span { flex: 1; }
+.base-layer-option span { flex: 0 1 auto; white-space: nowrap; }
 .base-layer-option > i { width: 16px; color: var(--text-muted); text-align: center; }
 .base-layer-option.active > i { color: var(--accent-color); }
 
@@ -415,6 +423,8 @@ body {
 }
 
 .panel-header-left {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -425,6 +435,8 @@ body {
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.2px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .panel-header-left h3 i {
@@ -434,8 +446,9 @@ body {
 
 .dataset-select {
     position: relative;
-    min-width: 120px;
-    max-width: 180px;
+    flex: 1;
+    min-width: 160px;
+    max-width: 220px;
     z-index: 10;
 }
 
@@ -494,6 +507,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 7px 8px;
     border: 0;
     border-radius: 4px;
@@ -505,14 +519,78 @@ body {
     text-align: left;
 }
 
-.dataset-select-option:hover,
-.dataset-select-option.active { background: var(--bg-selected); color: var(--accent-color); }
-.dataset-select-option i { opacity: 0; }
-.dataset-select-option.active i { opacity: 1; }
+.dataset-select-option:hover:not(.loaded) {
+    background: var(--bg-selected);
+    color: var(--accent-color);
+}
 
 .dataset-select-option:focus-visible {
     outline: 2px solid var(--accent-color);
     outline-offset: -2px;
+}
+
+/* 选项文字 + 图层数说明 */
+.dataset-option-name {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataset-option-name em {
+    font-style: normal;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.dataset-select-option:hover:not(.loaded) .dataset-option-name em { color: var(--accent-color); }
+
+.dataset-select-option i {
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: transform var(--transition-fast);
+}
+
+.dataset-select-option:hover:not(.loaded) i { color: var(--accent-color); transform: scale(1.12); }
+
+/* 已加载的数据集：置灰不可点，仅作提示 */
+.dataset-select-option.loaded {
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.dataset-select-option.loaded i { color: var(--success-color); opacity: 0.9; }
+
+.dataset-menu-empty {
+    padding: 10px 8px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.5;
+}
+
+/* 「选择数据集」触发按钮：带加号图标，占据标题与关闭按钮之间的剩余宽度 */
+.dataset-add { flex: 1; min-width: 160px; max-width: 220px; }
+
+.dataset-add .dataset-select-trigger { gap: 6px; }
+
+.dataset-add .dataset-select-trigger .dataset-select-value {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataset-add .dataset-select-trigger > .fa-plus {
+    font-size: 10px;
+    color: var(--accent-color);
 }
 
 .panel-layer-count {
@@ -551,10 +629,11 @@ body {
 
 /* ===== Panel Toolbar ===== */
 .panel-toolbar {
-    padding: 10px 18px 10px 18px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border-light);
     flex-shrink: 0;
     display: flex;
+    flex-direction: row;
     gap: 8px;
     align-items: center;
 }
@@ -622,10 +701,81 @@ body {
 }
 
 .leaflet-popup-content { margin: 14px 16px; }
-.feature-popup-content { max-width: 300px; font-size: 13px; line-height: 1.8; }
-.feature-popup-title { display: block; color: var(--text-primary); font-size: 15px; }
-.feature-popup-content hr { margin: 6px 0; border: 0; border-top: 1px solid var(--border-color); }
-.feature-popup-content b:not(.feature-popup-title) { color: var(--text-secondary); }
+
+/* ===== 要素详情弹窗 ===== */
+.feature-popup { min-width: 200px; }
+
+.feature-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.feature-popup-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.feature-popup-heading { min-width: 0; }
+
+.feature-popup-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.feature-popup-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.feature-popup-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 9px;
+}
+
+.feature-popup-row {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.feature-popup-key {
+    width: 62px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.feature-popup-val {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
 .leaflet-container a.leaflet-popup-close-button { color: var(--text-secondary); }
 .leaflet-container a.leaflet-popup-close-button:hover { color: var(--text-primary); }
 
@@ -686,51 +836,46 @@ body {
 
 .toolbar-actions {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     flex-shrink: 0;
 }
 
+/* 工具栏操作按钮：纯图标按钮（无背景无边框），紧凑排列在搜索框右侧 */
 .toolbar-btn {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     font-size: 13px;
+    cursor: pointer;
+    transition: color var(--transition-fast);
+    white-space: nowrap;
 }
 
-.toolbar-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+.toolbar-btn i {
+    font-size: 13px;
+    flex-shrink: 0;
 }
 
-#selectAll,
-#deselectAll {
-    opacity: 1;
-    color: #000;
-}
-
-#selectAll:hover,
-#deselectAll:hover {
-    color: #000;
+.toolbar-btn:hover:not(:disabled) {
+    color: var(--accent-color);
 }
 
 .toolbar-btn:disabled {
-    opacity: 0.3;
+    opacity: 0.4;
     cursor: not-allowed;
     pointer-events: none;
 }
 
-#selectAll:disabled,
-#deselectAll:disabled {
-    opacity: 1;
-    color: var(--text-muted);
+/* 删除所有数据集：危险操作，hover 变红提示 */
+.toolbar-btn#removeAllDatasets:hover:not(:disabled) {
+    color: var(--danger-color);
 }
 
 /* ===== Layer List ===== */
@@ -739,7 +884,170 @@ body {
     overflow-y: auto;
     padding: 8px 10px 8px 10px;
     min-height: 120px;
-    max-height: 400px;
+}
+
+/* ===== 数据集分组（可折叠 / 可移除） ===== */
+.layer-group {
+    margin-bottom: 6px;
+    border-radius: var(--radius-md);
+}
+
+.layer-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.layer-group-header:hover {
+    background: var(--bg-hover);
+}
+
+.layer-group-collapse {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--transition-base), color var(--transition-fast);
+}
+
+.layer-group.collapsed .layer-group-collapse {
+    transform: rotate(-90deg);
+}
+
+.layer-group-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    flex-shrink: 0;
+}
+
+.layer-group-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.layer-group-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.layer-group-header:hover .layer-group-count {
+    background: var(--bg-active);
+}
+
+.layer-group-remove {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.layer-group-remove:hover {
+    color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* 分组头「显示/隐藏该组全部图层」按钮：常显 */
+.layer-group-vis {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.layer-group-vis:hover:not(:disabled) {
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+
+.layer-group-vis:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.layer-group.collapsed .layer-group-items {
+    display: none;
+}
+
+/* 组内图层行整体缩进，体现层级 */
+.layer-group-items {
+    padding: 2px 0 2px 12px;
+}
+
+/* 搜索时强制展开已折叠的分组，保证结果可见 */
+.layer-list-container.searching .layer-group.collapsed .layer-group-items {
+    display: block;
+}
+
+/* 搜索无结果的轻提示 */
+.filter-empty {
+    padding: 22px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.filter-empty i {
+    margin-right: 6px;
 }
 
 .layer-group-title {
@@ -755,58 +1063,166 @@ body {
 .layer-group-title i { color: var(--accent-color); }
 .layer-group-title em { margin-left: auto; color: var(--text-muted); font-size: 11px; font-style: normal; font-weight: 500; }
 
+/* ===== 地图要素标注 ===== */
+/* 外层容器：透明，覆盖 Leaflet .leaflet-div-icon 的默认白底/边框，仅承载定位 transform */
+.map-feature-label-wrap {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
 .map-feature-label {
     width: max-content !important;
     height: auto !important;
-    padding: 3px 7px;
-    border: 1px solid rgba(79, 110, 247, 0.28);
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
-    color: #1e293b;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.3;
-    white-space: nowrap;
-}
-
-.map-feature-label--point { transform: translate(-50%, -100%); }
-.map-feature-label--linestring,
-.map-feature-label--polygon { transform: translate(-50%, -50%); }
-
-.map-feature-point-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0 1px;
     background: transparent;
     border: 0;
-    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.28));
+    border-radius: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    /* 文字色 = 图层主题色（JS 传入 --label-color）；暗色主题下与白色混合提亮保证可读 */
+    color: var(--label-color, #334155);
+    /* 扫边：八向 halo 描边 + 轻投影，任意底图/要素颜色上都保持可读，且不遮挡地图内容 */
+    text-shadow:
+        1px 0 0 var(--label-halo),
+        -1px 0 0 var(--label-halo),
+        0 1px 0 var(--label-halo),
+        0 -1px 0 var(--label-halo),
+        1.4px 1.4px 0 var(--label-halo),
+        -1.4px 1.4px 0 var(--label-halo),
+        1.4px -1.4px 0 var(--label-halo),
+        -1.4px -1.4px 0 var(--label-halo),
+        0 2px 3px rgba(15, 23, 42, 0.3);
 }
 
-.point-ring {
-    width: 16px;
-    height: 16px;
+[data-theme="dark"] .map-feature-label {
+    color: #e8e8f0;
+    color: color-mix(in srgb, var(--label-color, #334155) 60%, #ffffff);
+}
+
+/* 居中 transform 作用于内层，不受 Leaflet 外层内联 transform 影响：
+   多边形——水平垂直均居中；线——沿线法线方向偏移到线旁（--label-dx/dy 由 JS 按线走向计算）；
+   点——水平居中、紧贴圆点上方（抬升量随点大小变化） */
+.map-feature-label--point { transform: translate(-50%, calc(-100% - var(--label-offset, 6px))); }
+.map-feature-label--polygon { transform: translate(-50%, -50%); }
+.map-feature-label--linestring {
+    transform: translate(calc(-50% + var(--label-dx, 0px)), calc(-50% + var(--label-dy, 0px)));
+}
+
+/* 垂直排列（线走向较陡时）：文字逐字竖排且保持正向，不旋转 */
+.map-feature-label--vertical {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.08em;
+}
+
+/* ===== 点要素图标：实心圆点 + 可配置边线（颜色/宽度由内联样式控制） ===== */
+.map-feature-point-icon {
+    background: transparent;
+    border: 0;
+    /* 圆点在图标容器内水平垂直居中，保证圆点中心精确落在坐标点上 */
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid var(--point-color);
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
 }
 
-.point-core {
-    width: 6px;
-    height: 6px;
+.point-dot {
+    display: block;
     border-radius: 50%;
-    background: var(--point-color);
+    /* content-box：宽高 = 点内径，边线在尺寸之外叠加，与图层行图例的计算方式一致 */
+    box-sizing: content-box;
+    transition: box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-[data-theme="dark"] .point-ring { background: rgba(15, 23, 42, 0.92); }
+/* ===== 地图要素 hover 反馈 ===== */
+/* 面/线：轻微提亮 + 提饱和，选中态与高亮层不受影响 */
+.leaflet-interactive:not(.feature-selected):not(.highlight-path):hover {
+    filter: brightness(1.18) saturate(1.06);
+}
 
-[data-theme="dark"] .map-feature-label {
-    border-color: rgba(129, 140, 248, 0.45);
-    background: rgba(15, 23, 42, 0.92);
-    color: #f8fafc;
+/* 点：hover 时圆点轻微放大 */
+.map-feature-point-icon:hover .point-dot {
+    transform: scale(1.18);
+}
+
+/* ===== 要素选中态（点击要素弹出详情时；主题蓝光晕，区别于图层高亮的琥珀色） ===== */
+path.feature-selected {
+    filter: drop-shadow(0 0 5px rgba(79, 110, 247, 0.85));
+}
+
+.point-marker-selected .point-dot {
+    box-shadow:
+        0 0 0 3px rgba(79, 110, 247, 0.42),
+        0 0 12px rgba(79, 110, 247, 0.7);
+}
+
+/* ===== 图层高亮（单击图层项时地图叠加层 + 图层项联动） ===== */
+/* 图层项高亮态 */
+.layer-item.highlighted {
+    background: var(--bg-selected);
+}
+
+.layer-item.highlighted:hover {
+    background: var(--bg-selected);
+}
+
+.layer-item.highlighted .layer-name span {
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+/* 地图高亮叠加：点要素脉冲圆环（面/线为虚线描边，样式由 JS 传入） */
+.map-highlight-icon {
+    background: transparent;
+    border: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.highlight-ring {
+    display: block;
+    border-radius: 50%;
+    border: 3px solid #f59e0b;
+    box-shadow:
+        0 0 0 3px rgba(245, 158, 11, 0.22),
+        0 0 16px rgba(245, 158, 11, 0.55);
+    box-sizing: border-box;
+    pointer-events: none;
+    /* 开场闪烁 3 次 → 常驻脉冲 */
+    animation: highlightIntro 1.3s linear 1, highlightPulse 1.5s ease-in-out 1.3s infinite;
+}
+
+/* 面/线高亮描边（className 由 JS 传入 SVG path） */
+path.highlight-path {
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.8));
+    animation: highlightIntro 1.3s linear 1, highlightPathPulse 1.5s ease-in-out 1.3s infinite;
+}
+
+@keyframes highlightPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.6; }
+}
+
+@keyframes highlightPathPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+/* 开场闪烁：明/暗快速交替 3 次后稳定显示 */
+@keyframes highlightIntro {
+    0%, 14% { opacity: 1; }
+    14.001%, 28% { opacity: 0.1; }
+    28.001%, 42% { opacity: 1; }
+    42.001%, 56% { opacity: 0.1; }
+    56.001%, 70% { opacity: 1; }
+    70.001%, 84% { opacity: 0.1; }
+    84.001%, 100% { opacity: 1; }
 }
 
 /* ===== Layer Item ===== */
@@ -820,7 +1236,7 @@ body {
     transition: all var(--transition-fast);
     position: relative;
     user-select: none;
-    gap: 10px;
+    gap: 6px;
 }
 
 .layer-item:hover {
@@ -857,66 +1273,77 @@ body {
     cursor: grabbing;
 }
 
-/* 复选框 - 现代化开关 */
-.layer-item .layer-checkbox-wrapper {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.layer-item .layer-checkbox {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-}
-
-.layer-item .layer-toggle {
-    width: 38px;
-    height: 22px;
-    border-radius: 30px;
-    background: var(--border-color);
+/* 图层显示/隐藏：眼睛图标按钮，位于图层行左侧（主流图层列表的开关位），激活态主题色高亮 */
+.layer-item .vis-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
     cursor: pointer;
-    transition: all var(--transition-fast);
     display: flex;
     align-items: center;
-    padding: 2px;
+    justify-content: center;
     flex-shrink: 0;
-    border: 2px solid transparent;
+    transition: all var(--transition-fast);
 }
 
-.layer-item .layer-toggle:hover {
-    border-color: var(--accent-color);
+.layer-item .vis-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-color);
 }
 
-.layer-item .layer-toggle .toggle-knob {
+.layer-item .vis-btn.active {
+    color: var(--accent-color);
+}
+
+/* 图例色块容器（宽度随图例实际尺寸自适应，保证对齐） */
+.layer-item .layer-swatch {
+    min-width: 24px;
+    max-width: 44px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.layer-item.hidden .layer-swatch {
+    opacity: 0.35;
+}
+
+/* 图例样式：尺寸/边线/透明度均由内联样式按当前样式配置生成，与地图显示一致；
+   不加投影/阴影——阴影会让细线/小点看起来比地图实际渲染的更大 */
+.swatch {
+    display: inline-block;
+    transition: all var(--transition-fast);
+}
+
+.swatch--point {
+    border-radius: 50%;
+    box-sizing: content-box;
+}
+
+/* 宽度由内联样式按线宽等比生成（粗线显示更长的线段） */
+.swatch--line {
+    border-radius: 1px;
+}
+
+.swatch--polygon {
+    width: 18px;
+    height: 14px;
+    border-radius: 3px;
+    box-sizing: content-box;
+}
+
+.swatch--mixed {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: white;
-    transition: all var(--transition-fast);
-    box-shadow: var(--shadow-sm);
-}
-
-.layer-item .layer-toggle.active {
-    background: var(--accent-color);
-}
-
-.layer-item .layer-toggle.active .toggle-knob {
-    transform: translateX(16px);
-}
-
-/* 颜色指示器 */
-.layer-item .layer-color {
-    width: 4px;
-    height: 32px;
-    border-radius: 4px;
-    flex-shrink: 0;
-    transition: all var(--transition-fast);
-}
-
-.layer-item.hidden .layer-color {
-    opacity: 0.3;
 }
 
 /* 图层信息 */
@@ -952,36 +1379,16 @@ body {
     margin-top: 1px;
 }
 
-.layer-item .layer-meta .meta-badge {
-    background: var(--bg-hover);
-    padding: 0 8px;
-    border-radius: 30px;
-    font-size: 10px;
-    font-weight: 500;
+.layer-item .layer-meta .meta-count {
+    letter-spacing: 0.02em;
 }
 
-.layer-item .layer-meta .meta-type {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-}
-
-/* 图层操作按钮 */
+/* 图层操作按钮：全部常显（缩放 / 样式 / 标注） */
 .layer-item .layer-actions {
     display: flex;
     flex-direction: row;
     gap: 2px;
     flex-shrink: 0;
-    opacity: 1;
-    transition: opacity var(--transition-fast);
-}
-
-.layer-item:hover .layer-actions {
-    opacity: 1;
-}
-
-.layer-item:focus-within .layer-actions {
-    opacity: 1;
 }
 
 .layer-item .layer-actions button {
@@ -990,7 +1397,7 @@ body {
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: #000;
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
     display: flex;
@@ -999,26 +1406,26 @@ body {
     font-size: 12px;
 }
 
-.layer-item .layer-actions .label-btn { color: #000; }
-.layer-item .layer-actions .label-btn.active,
-.layer-item .layer-actions .label-btn:disabled { color: var(--accent-color); }
-
-.layer-item .layer-actions button:hover {
+.layer-item .layer-actions button:hover:not(:disabled) {
     background: var(--bg-hover);
     color: var(--accent-color);
 }
 
-.layer-item .layer-actions .zoom-btn:hover,
-.layer-item .layer-actions .download-btn:hover,
-.layer-item .layer-actions .label-btn:hover {
-    color: var(--accent-color) !important;
+.layer-item .layer-actions button:disabled {
+    opacity: 0.42;
+    color: var(--text-muted);
+    cursor: not-allowed;
+    /* 不设 pointer-events:none：禁用按钮仍需响应悬停，以显示「不可用」原因 tooltip */
 }
 
-[data-theme="dark"] .layer-item .layer-actions button { color: #000; }
-[data-theme="dark"] .layer-item .layer-actions button:hover { color: var(--accent-color) !important; }
+.layer-item .layer-actions .style-btn:hover {
+    background: var(--accent-light);
+}
 
-.layer-item .layer-actions .label-btn.active { color: var(--accent-color); background: var(--accent-light); }
-.layer-item .layer-actions .label-btn:disabled { opacity: 1; color: var(--text-muted); cursor: not-allowed; }
+.layer-item .layer-actions .label-btn.active {
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
 
 .layer-item .layer-actions .delete-btn:hover {
     color: var(--danger-color);
@@ -1094,8 +1501,15 @@ body {
     color: var(--text-muted);
 }
 
-.footer-stats .stat-divider {
+.footer-stats .stat-item span {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.footer-stats .stat-sep {
     color: var(--border-color);
+    margin: 0 2px;
 }
 
 .footer-actions {
@@ -1118,9 +1532,9 @@ body {
     font-size: 13px;
 }
 
-.footer-btn:hover {
+.footer-btn:hover:not(:disabled) {
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--accent-color);
 }
 
 .footer-btn:disabled {
@@ -1130,51 +1544,9 @@ body {
 }
 
 
-button:focus-visible,
-.footer-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.1);
+button:focus-visible {
     outline: 3px solid var(--accent-light);
     outline-offset: 2px;
-}
-    color: var(--danger-color);
-}
-
-/* ===== Stats Bar ===== */
-.stats-bar {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-panel);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-radius: 30px;
-    padding: 8px 20px;
-    box-shadow: var(--shadow-md);
-    border: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    z-index: 999;
-    transition: all var(--transition-base);
-}
-
-.stats-bar .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.stats-bar .stat-item i {
-    color: var(--accent-color);
-    font-size: 13px;
-}
-
-.stats-bar .stat-divider {
-    color: var(--border-color);
-    font-size: 18px;
 }
 
 /* ===== Toast ===== */
@@ -1243,7 +1615,6 @@ button:focus-visible,
 
 /* ===== 禁用按钮样式 ===== */
 .btn:disabled,
-.toolbar-btn:disabled,
 .footer-btn:disabled {
     opacity: 0.3 !important;
     cursor: not-allowed !important;
@@ -1273,24 +1644,22 @@ button:focus-visible,
     }
 
     .panel-toolbar {
-        padding: 8px 16px 8px 16px;
-        flex-wrap: wrap;
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .toolbar-actions {
+        gap: 4px;
+    }
+
+    .toolbar-btn {
+        width: 28px;
+        height: 28px;
     }
 
     .layer-list-container {
         max-height: min(42dvh, 300px);
         padding: 6px 8px;
-    }
-
-    .stats-bar {
-        font-size: 11px;
-        padding: 6px 14px;
-        gap: 6px;
-        bottom: 12px;
-        left: 12px;
-        transform: none;
-        flex-wrap: wrap;
-        justify-content: center;
     }
 
     .toast-container {
@@ -1324,54 +1693,17 @@ button:focus-visible,
     .layer-item .layer-meta {
         font-size: 10px;
     }
-    .layer-item .layer-actions { opacity: 1; }
-    .footer-stats .stat-divider {
-        display: none;
+    .footer-stats .stat-sep {
+        margin: 0;
     }
 }
 
+/* 禁用按钮统一外观：无论图层隐藏还是无可用数据（如无标注字段），均为降透明度 + 弱化色 */
 .layer-item .layer-actions button:disabled {
     opacity: 0.42;
-    /* background: var(--bg-active); */
     color: var(--text-muted);
-    border: 1px dashed var(--border-color);
     cursor: not-allowed;
-    pointer-events: none;
-}
-
-.layer-item .layer-actions .zoom-btn:disabled {
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-}
-
-.footer-btn#zoomToAll {
-    opacity: 1;
-    color: #000;
-}
-
-.footer-btn#zoomToAll:hover { color: #000; }
-.footer-btn#zoomToAll:disabled { color: var(--text-muted); }
-
-.layer-item .layer-actions .zoom-btn:disabled {
-    color: var(--text-muted);
-}
-
-.layer-item .layer-actions .label-btn:disabled,
-.layer-item .layer-actions .label-btn.active {
-    color: var(--accent-color);
-}
-
-.layer-item.hidden .layer-actions button:disabled {
-    opacity: 0.62;
-    /* background: var(--bg-primary); */
-    color: var(--text-muted);
-}
-
-#selectAll:disabled,
-#deselectAll:disabled {
-    opacity: 1 !important;
-    color: var(--text-muted) !important;
+    /* 不设 pointer-events:none：禁用按钮仍需响应悬停，以显示「不可用」原因 tooltip */
 }
 
 /* ===== Unified hover tips ===== */
@@ -1397,5 +1729,435 @@ button:focus-visible,
 @keyframes tooltipIn {
     from { opacity: 0; transform: translateY(3px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 图层样式配置弹窗 ===== */
+.style-modal-overlay[hidden] { display: none !important; }
+
+.style-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    animation: fadeIn var(--transition-fast) both;
+}
+
+.style-modal {
+    width: 300px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100dvh - 48px);
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    background: var(--tooltip-bg);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.32);
+    overflow: hidden;
+    animation: modalIn 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.style-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.style-modal-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.style-modal-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.style-modal-head-text { min-width: 0; }
+
+.style-modal-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.style-modal-sub {
+    display: block;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.style-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px 8px;
+}
+
+/* ===== 样式分组（填充/边界/线条/点/边线）：标题层级 + 字段缩进 ===== */
+.style-group {
+    margin-bottom: 6px;
+}
+
+.style-group-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--accent-color);
+    padding: 2px 0 7px;
+}
+
+/* 标题前的小色标，强化一级层级 */
+.style-group-title::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    background: var(--accent-color);
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+
+.style-group-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+/* 字段整体缩进 + 左侧竖线，形成二级层级 */
+.style-group-fields {
+    margin-left: 3px;
+    padding-left: 11px;
+    border-left: 2px solid var(--accent-light);
+}
+
+.style-group-fields .style-field:last-child {
+    margin-bottom: 6px;
+}
+
+.style-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 9px;
+}
+
+/* 字段标签：次级文字样式（与分组标题形成主次区别） */
+.style-field label {
+    width: 58px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.style-control {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* ===== 自定义取色器（应用内调色板，样式跟随亮/暗主题） ===== */
+.color-field-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 8px 3px 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-hover);
+    cursor: pointer;
+    font: inherit;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.color-field-btn:hover,
+.color-field-btn:focus-visible {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-light);
+    outline: none;
+}
+
+.color-field-swatch {
+    width: 22px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(15, 23, 42, 0.18);
+    flex-shrink: 0;
+}
+
+.color-field-caret {
+    font-size: 9px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* 弹层：fixed 定位（不受样式弹窗 overflow 裁剪），z-index 高于样式弹窗 */
+.color-picker-pop {
+    position: fixed;
+    z-index: 4000;
+    width: 212px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: modalIn 0.15s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 饱和度/明度面板（底色由 JS 按色相实时更新） */
+.cp-sv {
+    position: relative;
+    height: 108px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.cp-sv-cursor {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.55);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+/* 色相滑块：彩虹渐变轨道 + 白色环形滑柄 */
+.cp-hue {
+    width: 100%;
+    height: 10px;
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+    background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+
+.cp-hue::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: transparent;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1.5px rgba(15, 23, 42, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+}
+
+.cp-hue::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: transparent;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1.5px rgba(15, 23, 42, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+}
+
+/* 预设色板 */
+.cp-presets {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 5px;
+}
+
+.cp-preset {
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 1px solid rgba(15, 23, 42, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+}
+
+.cp-preset:hover { transform: scale(1.18); }
+
+.cp-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cp-hex-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.cp-hex-input {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.cp-hex-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.hex-val {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    color: var(--text-secondary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.style-field input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    height: 4px;
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 2px;
+    background: var(--border-color);
+    outline: none;
+    cursor: pointer;
+}
+
+.style-field input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    border: 2.5px solid var(--tooltip-bg);
+    box-shadow: 0 0 0 1.5px var(--accent-color);
+    transition: transform var(--transition-fast);
+}
+
+.style-field input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+.style-field input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    border: 2.5px solid var(--tooltip-bg);
+    box-shadow: 0 0 0 1.5px var(--accent-color);
+    cursor: pointer;
+}
+
+.style-field .range-val {
+    min-width: 42px;
+    text-align: right;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.style-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.modal-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.modal-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.modal-btn.primary {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+}
+
+.modal-btn.primary:hover {
+    background: #3f5ee8;
+    color: #fff;
+}
+
+.modal-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* 弹窗打开时锁定背景滚动 */
+body.modal-open { overflow: hidden; }
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 图层行内样式按钮 */
+.layer-item .layer-actions .style-btn:hover {
+    color: var(--accent-color);
+    background: var(--accent-light);
 }
 
