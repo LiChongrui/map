@@ -1080,11 +1080,13 @@ body {
     background: transparent;
     border: 0;
     border-radius: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    /* 中文字体优先，保证中英混排字形统一（避免 Segoe UI 等拉丁字体排在前面造成混排割裂）；
+       拉丁字体仅作兜底 */
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", "Helvetica Neue", system-ui, sans-serif;
     font-size: 12px;
-    font-weight: 600;
-    line-height: 1.4;
-    letter-spacing: 0.02em;
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: 0.03em;
     white-space: nowrap;
     /* 文字色 = 图层主题色（JS 传入 --label-color）；暗色主题下与白色混合提亮保证可读 */
     color: var(--label-color, #334155);
