@@ -213,12 +213,14 @@ const UIManager = (function() {
         container.querySelectorAll('.layer-group-items').forEach(groupContainer => {
             sortableInstances.push(Sortable.create(groupContainer, {
                 handle: '.drag-handle',
-                animation: 200,
-                easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-                ghostClass: 'dragging',
-                dragClass: 'drag-over',
+                animation: 260,
+                easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
                 forceFallback: true,
                 fallbackOnBody: true,
+                fallbackTolerance: 2,
                 onEnd: function() {
                     const orderedIds = [];
                     container.querySelectorAll('.layer-item').forEach(item => {
@@ -237,6 +239,12 @@ const UIManager = (function() {
             if (btn) btn.disabled = !enabled;
         });
 
+        // 样式面板内「恢复默认」按钮：样式偏离默认值时才可点击（面板打开时同步）
+        const styleResetBtn = document.getElementById('styleReset');
+        if (styleResetBtn && stylePanelLayerId) {
+            styleResetBtn.disabled = LayerManager.isLayerStyleDefault(stylePanelLayerId);
+        }
+
         const layerList = document.getElementById('layerList');
         if (layerList) {
             layerList.style.opacity = enabled ? '1' : '0.6';
@@ -253,8 +261,17 @@ const UIManager = (function() {
             if (deselectAll) deselectAll.disabled = !enabled || !hasVisibleLayer;
         }
 
-        // 展开/折叠所有分组按钮：可用态只取决于分组折叠情况，统一交给 updateGroupButtonsState
+        // 展开/折叠所有分组按钮：可用态只取决于分组折叠情况，统一交给 updateGroupButtonsState；
+        // 分组头 显示/隐藏/缩放 按钮可用态随图层可见性变化同步
         updateGroupButtonsState();
+        syncGroupVisButtons();
+    }
+
+    // 同步所有分组头 显示/隐藏/缩放 按钮可用态（批量显隐/单图层切换后由 updateButtonsState 调用）
+    function syncGroupVisButtons() {
+        document.querySelectorAll('#layerList .layer-group').forEach(groupEl => {
+            updateGroupVisButtons(groupEl, groupEl.dataset.group);
+        });
     }
 
     function bindEvents() {
@@ -406,6 +423,16 @@ const UIManager = (function() {
             if (closeBtn) closeBtn.addEventListener('click', closeStylePanel);
             const doneBtn = document.getElementById('styleModalDone');
             if (doneBtn) doneBtn.addEventListener('click', closeStylePanel);
+            const resetBtn = document.getElementById('styleReset');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function() {
+                    if (!stylePanelLayerId) return;
+                    LayerManager.resetLayerStyle(stylePanelLayerId);
+                    refreshStylePanel();
+                    this.disabled = true;
+                    showToast('已恢复默认样式', 'info');
+                });
+            }
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' && !styleModal.hidden) closeStylePanel();
             });
@@ -465,7 +492,7 @@ const UIManager = (function() {
     }
 
     // 渲染单个图层条目（所有动态文本/属性均已转义）
-    // 主流顺序：左侧 [拖拽把手][显隐眼睛] 图例 名称，右侧操作 [缩放][样式][标注]
+    // 主流顺序：左侧 [拖拽把手][显隐眼睛] 图例 名称，右侧操作 [缩放][标注]（样式入口=点击图例）
     function renderLayerItem(id, info) {
         const { name } = info.config;
         const { visible, featureCount, labelsVisible, labelField, data } = info;
@@ -483,9 +510,9 @@ const UIManager = (function() {
                 <button type="button" class="vis-btn ${isVisible ? 'active' : ''}" data-tooltip="${isVisible ? '隐藏图层' : '显示图层'}" aria-label="${isVisible ? '隐藏' : '显示'}${safeName}">
                     <i class="fas ${isVisible ? 'fa-eye' : 'fa-eye-slash'}"></i>
                 </button>
-                <span class="layer-swatch" data-tooltip="${isVisible ? '点击图例高亮该图层（双击图层行缩放并高亮）' : '图层隐藏时不可高亮'}" role="button" aria-label="${isVisible ? '高亮' + safeName : safeName + '不可高亮'}">${legendSwatchHTML(style, geometry.type)}</span>
+                <span class="layer-swatch" data-tooltip="${isVisible ? '点击图例设置样式' : '图层隐藏时不可设置样式'}" role="button" aria-label="${isVisible ? '设置' + safeName + '样式' : safeName + '不可设置样式'}">${legendSwatchHTML(style, geometry.type)}</span>
                 <div class="layer-info">
-                    <div class="layer-name">
+                    <div class="layer-name" data-tooltip="${isVisible ? '单击高亮该图层' : '图层隐藏时不可高亮'}">
                         <span>${safeName}</span>
                     </div>
                     <div class="layer-meta">
@@ -493,11 +520,8 @@ const UIManager = (function() {
                     </div>
                 </div>
                 <div class="layer-actions">
-                    <button type="button" class="zoom-btn" data-tooltip="${isVisible ? '缩放至该图层（双击图层行亦可）' : '图层隐藏时不可缩放'}" aria-label="缩放至${safeName}" ${isVisible ? '' : 'disabled'}>
+                    <button type="button" class="zoom-btn" data-tooltip="${isVisible ? '缩放至该图层' : '图层隐藏时不可缩放'}" aria-label="缩放至${safeName}" ${isVisible ? '' : 'disabled'}>
                         <i class="fas fa-crosshairs"></i>
-                    </button>
-                    <button type="button" class="style-btn" data-tooltip="${isVisible ? '样式设置' : '图层隐藏时不可设置样式'}" aria-label="设置${safeName}样式" ${isVisible ? '' : 'disabled'}>
-                        <i class="fas fa-palette"></i>
                     </button>
                     <button type="button" class="label-btn ${labelsVisible ? 'active' : ''}" data-tooltip="${!isVisible ? '图层隐藏时不可显示标注' : (labelField ? (labelsVisible ? '隐藏标注' : '显示标注') : '无可用标注字段，无法标注')}" aria-label="${labelField ? (labelsVisible ? '隐藏' + safeName + '标注' : '显示' + safeName + '标注') : safeName + '无法标注'}" ${labelsEnabled ? '' : 'disabled'}>
                         <i class="fas fa-tag"></i>
@@ -521,14 +545,18 @@ const UIManager = (function() {
         const labelsEnabled = isVisible && !!info.labelField;
 
         item.classList.toggle('hidden', !isVisible);
-        // 高亮状态与 LayerManager 保持同步（单击图层项触发）
+        // 高亮状态与 LayerManager 保持同步（单击图层名触发）
         item.classList.toggle('highlighted', LayerManager.getHighlightedLayerId() === id);
 
-        // 图例色块跟随样式配置实时刷新；tooltip 同步可见性（点击高亮 / 隐藏不可用）
+        // 图层名 tooltip 同步可见性
+        const nameEl = item.querySelector('.layer-name');
+        if (nameEl) nameEl.dataset.tooltip = isVisible ? '单击高亮该图层' : '图层隐藏时不可高亮';
+
+        // 图例色块跟随样式配置实时刷新；tooltip 同步可见性（点击设置样式 / 隐藏不可用）
         const swatchWrap = item.querySelector('.layer-swatch');
         if (swatchWrap) {
             swatchWrap.innerHTML = legendSwatchHTML(LayerManager.getLayerStyle(id), getLayerGeometryType(info.data));
-            swatchWrap.dataset.tooltip = isVisible ? '点击图例高亮该图层（双击图层行缩放并高亮）' : '图层隐藏时不可高亮';
+            swatchWrap.dataset.tooltip = isVisible ? '点击图例设置样式' : '图层隐藏时不可设置样式';
         }
 
         // 显示/隐藏图标按钮：图标与激活态跟随可见性
@@ -540,16 +568,10 @@ const UIManager = (function() {
             visBtn.dataset.tooltip = isVisible ? '隐藏图层' : '显示图层';
         }
 
-        const styleBtn = item.querySelector('.style-btn');
-        if (styleBtn) {
-            styleBtn.disabled = !isVisible;
-            styleBtn.dataset.tooltip = isVisible ? '样式设置' : '图层隐藏时不可设置样式';
-        }
-
         const zoomBtn = item.querySelector('.zoom-btn');
         if (zoomBtn) {
             zoomBtn.disabled = !isVisible;
-            zoomBtn.dataset.tooltip = isVisible ? '缩放至该图层（双击图层行亦可）' : '图层隐藏时不可缩放';
+            zoomBtn.dataset.tooltip = isVisible ? '缩放至该图层' : '图层隐藏时不可缩放';
         }
 
         const labelBtn = item.querySelector('.label-btn');
@@ -620,7 +642,7 @@ const UIManager = (function() {
         if (collapseBtn) collapseBtn.disabled = !hasGroups || collapsedCount === groups.length;
     }
 
-    // 分组头操作按钮可用态：全可见时禁用显示、全隐藏时禁用隐藏
+    // 分组头操作按钮可用态：全可见时禁用显示、全隐藏时禁用隐藏/缩放
     function updateGroupVisButtons(groupEl, name) {
         const infos = [...LayerManager.getLayersByGroup(name).values()];
         if (infos.length === 0) return;
@@ -628,11 +650,13 @@ const UIManager = (function() {
         const noneVisible = infos.every(info => !info.visible);
         const showBtn = groupEl.querySelector('.layer-group-show');
         const hideBtn = groupEl.querySelector('.layer-group-hide');
+        const zoomBtn = groupEl.querySelector('.layer-group-zoom');
         if (showBtn) showBtn.disabled = allVisible;
         if (hideBtn) hideBtn.disabled = noneVisible;
+        if (zoomBtn) zoomBtn.disabled = noneVisible;
     }
 
-    // 缩放到指定数据集内全部可见图层的范围（数据集缩放功能已隐藏，保留函数供扩展）
+    // 缩放到指定数据集内全部可见图层的范围
     function zoomToDataset(name) {
         const bounds = L.latLngBounds();
         let hasValid = false;
@@ -692,13 +716,16 @@ const UIManager = (function() {
                     <div class="layer-group-header" data-tooltip="${collapsed ? '展开分组' : '折叠分组'}">
                         <span class="layer-group-collapse" role="button" aria-expanded="${!collapsed}" aria-label="${collapsed ? '展开' : '折叠'}${safeName}"><i class="fas fa-chevron-down"></i></span>
                         <span class="layer-group-icon"><i class="fas fa-database"></i></span>
-                        <span class="layer-group-name" title="${safeName}">${safeName}</span>
+                        <span class="layer-group-name">${safeName}</span>
                         <span class="layer-group-count">${group.items.length}</span>
                         <button type="button" class="layer-group-vis layer-group-show" data-tooltip="显示该数据集全部图层" aria-label="显示${safeName}全部图层">
                             <i class="fas fa-eye"></i>
                         </button>
                         <button type="button" class="layer-group-vis layer-group-hide" data-tooltip="隐藏该数据集全部图层" aria-label="隐藏${safeName}全部图层">
                             <i class="fas fa-eye-slash"></i>
+                        </button>
+                        <button type="button" class="layer-group-vis layer-group-zoom" data-tooltip="缩放至该数据集可见图层" aria-label="缩放至${safeName}可见图层">
+                            <i class="fas fa-crosshairs"></i>
                         </button>
                         <button type="button" class="layer-group-remove" data-tooltip="移除数据集（可重新添加）" aria-label="移除数据集${safeName}">
                             <i class="fas fa-trash-can"></i>
@@ -722,6 +749,12 @@ const UIManager = (function() {
                 if (e.target.closest('button')) return;
                 toggleGroupCollapse(groupEl);
                 this.dataset.tooltip = groupEl.classList.contains('collapsed') ? '展开分组' : '折叠分组';
+            });
+
+            // 缩放至该数据集内可见图层范围（自动避让图层面板）
+            groupEl.querySelector('.layer-group-zoom').addEventListener('click', function(e) {
+                e.stopPropagation();
+                zoomToDataset(name);
             });
 
             // 显示/隐藏该数据集全部图层（批量，逐条局部更新）
@@ -758,20 +791,26 @@ const UIManager = (function() {
         initSortable();
     }
 
-    // 绑定单个图层行的事件（显隐开关 / 图例高亮 / 双击缩放 / 样式 / 标注）
+    // 绑定单个图层行的事件（显隐开关 / 图例开样式 / 图层名高亮 / 双击缩放 / 标注）
     function bindLayerItem(item, id) {
-        // 单击图例图标：高亮并闪烁该图层数据（重复点击再次闪烁；图层隐藏时不可用）
+        // 单击图例图标：打开该图层样式设置（图层隐藏时不可用）
         const swatch = item.querySelector('.layer-swatch');
         if (swatch) {
             swatch.addEventListener('click', function(e) {
                 e.stopPropagation();
-                LayerManager.setLayerHighlight(id);
+                const info = LayerManager.getLayerInfo(id);
+                if (!info || !info.visible) return;
+                openStylePanel(id);
             });
         }
-        // 单击图层行其他区域（按钮/把手/图例除外）：移除高亮
+        // 单击图层名：高亮并闪烁该图层数据（图层隐藏时不可用，内部校验可见性）
         item.addEventListener('click', function(e) {
             if (e.target.closest('button, input, label, .drag-handle, .layer-swatch')) return;
-            LayerManager.clearLayerHighlight();
+            if (e.target.closest('.layer-name')) {
+                LayerManager.setLayerHighlight(id);
+            } else {
+                LayerManager.clearLayerHighlight();
+            }
         });
         // 双击图层行（按钮除外）：缩放至该图层并高亮闪烁；图层隐藏时不可用
         item.addEventListener('dblclick', function(e) {
@@ -788,14 +827,6 @@ const UIManager = (function() {
             visBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 LayerManager.toggleLayer(id);
-            });
-        }
-
-        const styleBtn = item.querySelector('.style-btn');
-        if (styleBtn) {
-            styleBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                openStylePanel(id);
             });
         }
 
@@ -1016,6 +1047,7 @@ const UIManager = (function() {
             if (document.activeElement !== hexInput) {
                 hexInput.value = hex.toUpperCase();
             }
+            syncStyleResetState(id);
         };
 
         const render = function() {
@@ -1199,6 +1231,12 @@ const UIManager = (function() {
         return groups.join('');
     }
 
+    // 同步样式面板内「恢复默认」按钮可用态（样式已偏离默认值才可点击）
+    function syncStyleResetState(id) {
+        const resetBtn = document.getElementById('styleReset');
+        if (resetBtn && id) resetBtn.disabled = LayerManager.isLayerStyleDefault(id);
+    }
+
     // 绑定样式控件输入事件（实时预览）：滑块直接绑定；颜色按钮打开自定义取色器
     function bindStyleInputs(body, id) {
         body.querySelectorAll('input[data-key]').forEach(input => {
@@ -1210,6 +1248,7 @@ const UIManager = (function() {
                 // 透明度类滑块（*Opacity）以百分比显示，统一存储为 0~1
                 const stored = key.endsWith('Opacity') ? value / 100 : value;
                 LayerManager.updateLayerStyle(id, { [key]: stored });
+                syncStyleResetState(id);
             });
         });
         body.querySelectorAll('button[data-color-key]').forEach(btn => {
@@ -1242,6 +1281,7 @@ const UIManager = (function() {
         if (iconEl) iconEl.className = `fas ${geometry.icon}`;
         body.innerHTML = buildStyleFields(getLayerGeometryType(info.data), LayerManager.getLayerStyle(id));
         bindStyleInputs(body, id);
+        syncStyleResetState(id);
         modal.hidden = false;
         document.body.classList.add('modal-open');
     }

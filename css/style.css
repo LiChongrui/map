@@ -888,15 +888,15 @@ body {
 
 /* ===== 数据集分组（可折叠 / 可移除） ===== */
 .layer-group {
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     border-radius: var(--radius-md);
 }
 
 .layer-group-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 8px;
+    gap: 7px;
+    padding: 6px 8px;
     border-radius: var(--radius-sm);
     cursor: pointer;
     user-select: none;
@@ -1028,9 +1028,11 @@ body {
     display: none;
 }
 
-/* 组内图层行整体缩进，体现层级 */
+/* 组内图层行整体缩进 + 左侧树形引导线（对齐折叠箭头中心），体现层级 */
 .layer-group-items {
-    padding: 2px 0 2px 12px;
+    padding: 2px 0 2px 15px;
+    margin-left: 19px;
+    border-left: 1px solid var(--border-color);
 }
 
 /* 搜索时强制展开已折叠的分组，保证结果可见 */
@@ -1229,14 +1231,15 @@ path.highlight-path {
 .layer-item {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    margin-bottom: 3px;
+    padding: 6px 12px;
+    margin-bottom: 2px;
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all var(--transition-fast);
     position: relative;
     user-select: none;
-    gap: 6px;
+    /* 基础间距（正常）；名称左侧的 把手/眼睛/图例 通过负 margin 拉近（见下） */
+    gap: 10px;
 }
 
 .layer-item:hover {
@@ -1247,26 +1250,41 @@ path.highlight-path {
     transform: scale(0.98);
 }
 
-.layer-item.dragging {
-    opacity: 0.5;
-    transform: scale(0.95);
+/* ===== Sortable 拖拽平滑样式（animation + easing 由 JS 配置） ===== */
+/* 占位幽灵：拖拽后原位置留下的空位，淡主题色提示落点 */
+.layer-item.sortable-ghost {
+    opacity: 0.35;
+    background: var(--accent-light);
+    outline: 1px dashed rgba(79, 110, 247, 0.55);
+    outline-offset: -1px;
 }
 
-.layer-item.drag-over {
-    border-top: 2px solid var(--accent-color);
+/* 被选中项：轻微提亮，提示当前拖拽的是这一行 */
+.layer-item.sortable-chosen {
+    background: var(--bg-hover);
+}
+
+/* 拖拽中的行：轻微上浮 + 柔和阴影，跟随鼠标平滑移动 */
+.layer-item.sortable-drag {
+    opacity: 0.95;
+    transform: rotate(1.5deg) scale(1.02);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.22);
+    border-radius: var(--radius-md);
+    z-index: 1000;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .layer-item .drag-handle {
     color: var(--text-muted);
     font-size: 13px;
     cursor: grab;
-    opacity: 0.3;
+    opacity: 0.45;
     transition: opacity var(--transition-fast);
     flex-shrink: 0;
 }
 
 .layer-item:hover .drag-handle {
-    opacity: 0.7;
+    opacity: 0.85;
 }
 
 .layer-item .drag-handle:active {
@@ -1275,8 +1293,8 @@ path.highlight-path {
 
 /* 图层显示/隐藏：眼睛图标按钮，位于图层行左侧（主流图层列表的开关位），激活态主题色高亮 */
 .layer-item .vis-btn {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: 0;
     border-radius: var(--radius-sm);
@@ -1300,11 +1318,21 @@ path.highlight-path {
     color: var(--accent-color);
 }
 
-/* 图例色块容器（宽度随图例实际尺寸自适应，保证对齐） */
+/* 名称左侧元素紧凑（把手→眼睛→图例）：负 margin 抵消部分 gap；
+   名称与右侧操作按钮保持 10px 正常间距 */
+.layer-item .vis-btn {
+    margin-left: -6px;
+}
+
+.layer-item .layer-swatch {
+    margin-left: -6px;
+}
+
+/* 图例色块容器（宽度随图例实际尺寸自适应，保证对齐；高度与图标按钮一致 28px） */
 .layer-item .layer-swatch {
     min-width: 24px;
     max-width: 44px;
-    height: 30px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1356,6 +1384,7 @@ path.highlight-path {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
+    letter-spacing: 0.01em;
     transition: color var(--transition-fast);
     display: flex;
     align-items: center;
@@ -1383,7 +1412,7 @@ path.highlight-path {
     letter-spacing: 0.02em;
 }
 
-/* 图层操作按钮：全部常显（缩放 / 样式 / 标注） */
+/* 图层操作按钮：全部常显（缩放 / 标注；样式入口=点击图例） */
 .layer-item .layer-actions {
     display: flex;
     flex-direction: row;
@@ -1416,10 +1445,6 @@ path.highlight-path {
     color: var(--text-muted);
     cursor: not-allowed;
     /* 不设 pointer-events:none：禁用按钮仍需响应悬停，以显示「不可用」原因 tooltip */
-}
-
-.layer-item .layer-actions .style-btn:hover {
-    background: var(--accent-light);
 }
 
 .layer-item .layer-actions .label-btn.active {
@@ -1502,7 +1527,7 @@ path.highlight-path {
 }
 
 .footer-stats .stat-item span {
-    font-weight: 600;
+    font-weight: 450;
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
 }
@@ -2153,11 +2178,5 @@ body.modal-open { overflow: hidden; }
 @keyframes modalIn {
     from { opacity: 0; transform: translateY(10px) scale(0.97); }
     to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* 图层行内样式按钮 */
-.layer-item .layer-actions .style-btn:hover {
-    color: var(--accent-color);
-    background: var(--accent-light);
 }
 

@@ -135,9 +135,38 @@ const MapManager = (function() {
     }
 
     function fitBounds(bounds, options = { padding: [40, 40] }) {
-        if (mapInstance && bounds && bounds.isValid()) {
-            mapInstance.fitBounds(bounds, options);
+        if (!mapInstance || !bounds || !bounds.isValid()) return;
+        // 归一化基础 padding（支持 [v, h] 数组或单一数字）
+        const base = Array.isArray(options.padding) ? options.padding
+            : (typeof options.padding === 'number' ? [options.padding, options.padding] : [40, 40]);
+        const baseV = base[0], baseH = base[1];
+        // 图层面板遮挡避让：桌面端面板为右侧竖栏 → 右侧让位；
+        // 移动端（≤768px）面板为底部浮层 → 底部让位。
+        // 用遮挡区域形状判定主导方向（coverW≈1 且 coverH 较小 → 底部条；反之 → 右侧条）
+        let padRight = baseH, padBottom = baseV;
+        const panel = document.getElementById('controlPanel');
+        if (panel && !panel.classList.contains('collapsed')) {
+            const rect = panel.getBoundingClientRect();
+            const mapRect = mapInstance.getContainer().getBoundingClientRect();
+            const overlapW = Math.min(rect.right, mapRect.right) - Math.max(rect.left, mapRect.left);
+            const overlapH = Math.min(rect.bottom, mapRect.bottom) - Math.max(rect.top, mapRect.top);
+            if (overlapW > 0 && overlapH > 0) {
+                const coverW = overlapW / mapRect.width;
+                const coverH = overlapH / mapRect.height;
+                if (coverW > 0.5 && coverH < coverW - 0.2) {
+                    padBottom = overlapH + 24; // 底部宽条（移动端底部浮层）
+                } else if (coverH > 0.5 && coverW < coverH - 0.2) {
+                    padRight = overlapW + 24;  // 右侧高条（桌面右栏）
+                }
+            }
         }
+        // 注意：paddingTopLeft/paddingBottomRight 是 Point(x, y)，必须用 L.point 明确 x=水平/ y=垂直，
+        // 不能传 [x, y] 数组——Leaflet 对 padding 数组约定为 [垂直, 水平]，方向会错
+        mapInstance.fitBounds(bounds, {
+            ...options,
+            paddingTopLeft: L.point(baseH, baseV),
+            paddingBottomRight: L.point(padRight, padBottom),
+        });
     }
 
     function setView(center, zoom) {

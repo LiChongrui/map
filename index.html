@@ -6,9 +6,9 @@
     <title>洛老师的历史地图集</title>
 
     <!-- ===== Leaflet CSS ===== -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="js/vendor/leaflet.css" />
     <!-- ===== Font Awesome 图标库 ===== -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="js/vendor/fontawesome-all.min.css" />
 
     <!-- ===== 自定义 CSS ===== -->
     <link rel="stylesheet" href="css/style.css" />
@@ -144,13 +144,16 @@
             </div>
             <div class="style-modal-body" id="styleModalBody"></div>
             <div class="style-modal-footer">
+                <button type="button" class="modal-btn" id="styleReset">
+                    <i class="fas fa-undo-alt"></i> 恢复默认
+                </button>
                 <button type="button" class="modal-btn primary" id="styleModalDone">完成</button>
             </div>
         </div>
     </div>
 
-    <!-- ===== 第三方 JS ===== -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- ===== 第三方 JS（本地化，避免 CDN 失效导致地图/拖拽不可用） ===== -->
+    <script src="js/vendor/leaflet.js"></script>
     <!-- ===== SortableJS 拖拽排序（本地副本，避免 CDN 加载失败导致拖拽失效） ===== -->
     <script src="js/vendor/Sortable.min.js"></script>
 
