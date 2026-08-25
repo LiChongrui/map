@@ -18,7 +18,6 @@ const CONFIG = {
             options: { maxZoom: 18, attribution: '© Esri' },
             icon: 'fa-fill-drip'
         },
-        // R60：精选自 CSDN「25 个在线地图瓦片 URL 分享」博客（腾讯地图连接失败已剔除）
         'Esri暗黑地图': {
             url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
             options: { maxZoom: 18, attribution: '© Esri' },
@@ -76,16 +75,21 @@ const CONFIG = {
     // ---------- 作者信息（导航栏右侧「关于作者」头像按钮弹出） ----------
     author: {
         name: '洛',
-        tagline: '历史地图 · 数字人文',
-        bio: '以交互地图为载体，整理与呈现历史城池、水系、疆域变迁等主题的地理信息，让历史在空间上被看见。',
+        tagline: '人文历史 · 地理爱好者',
+        // 1. 作者介绍（R71 去重：只讲作者身份与理念，不重复项目介绍内容）
+        bio: '洛，一个人文历史和地理爱好者。相信历史不应只存在于文字里，也存在于每一片山河大地之间。',
+        // 2. 网站介绍
+        website: '历史地图集以交互地图为载体，整理与呈现历史城池、水系、疆域变迁等主题的地理信息，让历史在空间上被看见。',
+        // 4. 其他：详情与联系方式
         details: [
             { icon: 'fa-book-open', label: '内容主题', value: '历史城池 · 水系 · 区域变迁' },
             { icon: 'fa-map-location-dot', label: '呈现形式', value: '交互式历史地图集' },
             { icon: 'fa-palette', label: '设计理念', value: '地图即叙事，数据可视化服务于历史表达' },
         ],
         contacts: [
-            { icon: 'fa-solid fa-envelope', label: '邮箱', value: '858998723@qq.com', action: 'copy', desc: '欢迎来信交流与反馈' },
-            { icon: 'fa-brands fa-github', label: 'GitHub', value: 'github.com/LiChongrui/map', href: 'https://github.com/LiChongrui/map', desc: '查看项目源码与最新动态' },
+            // R68：side 归属——邮箱属作者（左列）、GitHub 属项目（右列）
+            { icon: 'fa-solid fa-envelope', label: '邮箱', value: '858998723@qq.com', action: 'copy', desc: '欢迎来信交流与反馈', side: 'author' },
+            { icon: 'fa-brands fa-github', label: 'GitHub', value: 'github.com/LiChongrui/map', href: 'https://github.com/LiChongrui/map', desc: '查看项目源码与最新动态', side: 'project' },
         ],
     },
 };

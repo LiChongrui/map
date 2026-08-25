@@ -40,7 +40,7 @@
             <!-- 系统功能与作者入口之间的分隔标识 -->
             <span class="nav-divider" aria-hidden="true"></span>
             <!-- 作者入口：用户头像样式，独立于系统功能按钮 -->
-            <button type="button" class="nav-btn user-avatar" id="aboutAuthor" data-tooltip="关于作者" aria-label="关于作者">洛</button>
+            <button type="button" class="nav-btn user-avatar" id="aboutAuthor" data-tooltip="关于" aria-label="关于">洛</button>
         </div>
     </header>
 
@@ -186,13 +186,21 @@
                     <span class="author-modal-tagline" id="authorModalTagline"></span>
                 </div>
             </div>
-            <p class="author-modal-bio" id="authorModalBio"></p>
-            <ul class="author-modal-details" id="authorModalDetails"></ul>
-            <div class="author-modal-contacts" id="authorModalContacts"></div>
-            <div class="author-modal-sponsor" id="authorModalSponsor">
-                <div class="sponsor-title"><i class="fas fa-heart" aria-hidden="true"></i>友情赞助</div>
-                <img src="res/zanzhu.jpg" alt="友情赞助二维码" class="sponsor-qr" />
-                <p class="sponsor-desc">如果这个项目对你有帮助，欢迎扫码友情赞助支持</p>
+            <div class="author-modal-body">
+                <div class="author-columns">
+                    <div class="author-col-title area-t1"><i class="fas fa-user-pen" aria-hidden="true"></i>关于作者</div>
+                    <div class="author-col-title area-t2"><i class="fas fa-globe" aria-hidden="true"></i>关于项目</div>
+                    <p class="author-modal-bio area-b1" id="authorModalBio"></p>
+                    <p class="website-text area-b2" id="authorModalWebsite"></p>
+                    <div class="author-modal-contacts area-c1" id="authorModalContactAuthor"></div>
+                    <div class="author-modal-contacts area-c2" id="authorModalContactProject"></div>
+                    <div class="author-modal-sponsor area-s1" id="authorModalSponsor">
+                        <div class="sponsor-title"><i class="fas fa-heart" aria-hidden="true"></i>友情赞助</div>
+                        <img src="res/zanzhu.jpg" alt="友情赞助二维码" class="sponsor-qr" />
+                        <p class="sponsor-desc">喜欢的话，扫码支持一下作者吧</p>
+                    </div>
+                    <ul class="author-modal-details area-d1" id="authorModalDetails"></ul>
+                </div>
             </div>
             <div class="author-modal-footer">
                 <button type="button" class="modal-btn primary" id="authorModalOk">知道了</button>

@@ -45,6 +45,9 @@ const MapManager = (function() {
             imperial: false
         }).addTo(mapInstance);
 
+        // R69：鼠标位置经纬度坐标显示（右下角，与比例尺/版权单行排列）
+        addCoordinateControl();
+
         addBaseLayers();
         addBaseLayerLabel();
         mapInstance.getContainer().querySelectorAll('[title]').forEach(element => {
@@ -64,6 +67,25 @@ const MapManager = (function() {
         onAdd: function() {},
         onRemove: function() {},
     });
+
+    // R69：鼠标位置经纬度坐标控件（右下角，mousemove 更新，移出地图显示占位）
+    function addCoordinateControl() {
+        const coordControl = L.control({ position: 'bottomright' });
+        coordControl.onAdd = function() {
+            const el = L.DomUtil.create('div', 'leaflet-control coordinate-control');
+            el.textContent = '—';
+            mapInstance.on('mousemove', e => {
+                // R75：先经度后纬度（经度 lng, 纬度 lat）
+                el.textContent = `${e.latlng.lng.toFixed(4)}, ${e.latlng.lat.toFixed(4)}`;
+            });
+            mapInstance.on('mouseout', () => {
+                el.textContent = '—';
+            });
+            L.DomEvent.disableClickPropagation(el);
+            return el;
+        };
+        coordControl.addTo(mapInstance);
+    }
 
     function addBaseLayers() {
         const layers = {};

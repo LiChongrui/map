@@ -117,6 +117,10 @@ const UIManager = (function() {
                 <div class="dataset-menu-title">管理数据集</div>
                 <div class="dataset-menu-desc">勾选 = 添加到地图；取消已加载项的勾选 = 从地图移除</div>
             </div>
+            <div class="dataset-menu-search">
+                <i class="fas fa-search" aria-hidden="true"></i>
+                <input type="text" class="dataset-menu-search-input" placeholder="搜索数据集..." aria-label="搜索数据集" />
+            </div>
             <div class="dataset-menu-body">${options}</div>
             <div class="dataset-menu-footer">
                 <span class="dataset-menu-count">未改动</span>
@@ -127,6 +131,32 @@ const UIManager = (function() {
             </div>
         `;
 
+        // 数据集搜索（R63）：按名称实时过滤选项；无匹配时显示空态
+        const searchInput = menu.querySelector('.dataset-menu-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const kw = searchInput.value.trim().toLowerCase();
+                let visible = 0;
+                menu.querySelectorAll('.dataset-select-option').forEach(option => {
+                    const hit = !kw || (option.dataset.value || '').toLowerCase().includes(kw);
+                    option.style.display = hit ? '' : 'none';
+                    if (hit) visible += 1;
+                });
+                let empty = menu.querySelector('.dataset-menu-empty-filter');
+                if (visible === 0 && kw) {
+                    if (!empty) {
+                        empty = document.createElement('div');
+                        empty.className = 'dataset-menu-empty dataset-menu-empty-filter';
+                        empty.innerHTML = '<i class="fas fa-database"></i>未找到匹配的数据集';
+                        menu.querySelector('.dataset-menu-body').appendChild(empty);
+                    }
+                    empty.style.display = '';
+                } else if (empty) {
+                    empty.style.display = 'none';
+                }
+            });
+        }
+
         // 选项点击：label 默认行为自动 toggle checkbox，change 事件同步勾选态、徽章与底部计数；
         // 注意：不要再手动改 input.checked——label 会再派发一次 click 导致双重 toggle
         menu.querySelectorAll('.dataset-select-option').forEach(option => {
@@ -135,6 +165,7 @@ const UIManager = (function() {
                 input.addEventListener('change', () => {
                     option.classList.toggle('selected', input.checked);
                     updateOptionBadge(option, input.checked);
+                    updateOptionStateClass(option, input.checked);
                     updateDatasetMenuState(menu);
                 });
             }
@@ -169,6 +200,13 @@ const UIManager = (function() {
             toRemove.forEach(name => LayerManager.removeDataset(name));
             if (toRemove.length > 0) showToast(`已移除 ${toRemove.length} 个数据集`, 'info');
         });
+    }
+
+    // R71：option 级状态 class——pending-add（未加载勾选）/ pending-remove（已加载取消勾选），
+    // 用于 checkbox accent-color 三态分组配色（已加载=暖金棕 / 待添加=杏赭石 / 待移除=珊瑚红）
+    function updateOptionStateClass(option, checked) {
+        option.classList.toggle('pending-add', !option.classList.contains('loaded') && checked);
+        option.classList.toggle('pending-remove', option.classList.contains('loaded') && !checked);
     }
 
     // 选项徽章状态：未加载勾选 →「待添加」；已加载取消勾选 →「待移除」；其余恢复默认
@@ -249,6 +287,23 @@ const UIManager = (function() {
     }
 
     // 批量加载数据集：依次加载，汇总成功/失败；全部加载后缩放到整体范围
+    // R75：添加数据集后，分组数量超过 6 个时自动折叠（保持最后一个数据集展开），避免面板拥挤
+    function autoCollapseGroupsIfMany() {
+        const groups = document.querySelectorAll('#layerList .layer-group');
+        if (groups.length <= 6) return;
+        const lastGroup = groups[groups.length - 1];
+        collapsedGroups.clear();
+        groups.forEach(groupEl => {
+            const isLast = groupEl === lastGroup;
+            groupEl.classList.toggle('collapsed', !isLast);
+            const collapseBtn = groupEl.querySelector('.layer-group-collapse');
+            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', String(isLast));
+            if (!isLast) collapsedGroups.add(groupEl.dataset.group);
+        });
+        persistCollapsedGroups();
+        updateGroupButtonsState();
+    }
+
     async function addDatasets(names) {
         if (!names || names.length === 0) return;
         const bounds = L.latLngBounds();
@@ -269,7 +324,11 @@ const UIManager = (function() {
             if (result.failed > 0) failedNames.push(name);
         }
         if (hasValid) MapManager.fitBounds(bounds);
-        if (loaded > 0) showToast(`已加载 ${loaded} 个数据集`, 'success');
+        if (loaded > 0) {
+            showToast(`已加载 ${loaded} 个数据集`, 'success');
+            // R75：分组超过 6 个自动折叠，保持最后一个数据集展开
+            autoCollapseGroupsIfMany();
+        }
         if (failedNames.length > 0) showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
     }
 
@@ -1709,12 +1768,13 @@ const UIManager = (function() {
         const avatarEl = overlay.querySelector('#authorAvatar');
         const taglineEl = overlay.querySelector('#authorModalTagline');
         const bioEl = overlay.querySelector('#authorModalBio');
+        const websiteEl = overlay.querySelector('#authorModalWebsite');
         const detailsEl = overlay.querySelector('#authorModalDetails');
-        const contactsEl = overlay.querySelector('#authorModalContacts');
         if (nameEl) nameEl.textContent = author.name || '佚名';
         if (avatarEl) avatarEl.textContent = String(author.name || '?').trim().charAt(0);
         if (taglineEl) taglineEl.textContent = author.tagline || '';
         if (bioEl) bioEl.textContent = author.bio || '';
+        if (websiteEl) websiteEl.textContent = author.website || '';
         if (detailsEl) {
             detailsEl.innerHTML = '';
             (author.details || []).forEach(detail => {
@@ -1739,51 +1799,56 @@ const UIManager = (function() {
                 detailsEl.appendChild(li);
             });
         }
-        // 联系方式（邮箱 / GitHub）：邮箱点击复制到剪贴板（mailto 依赖邮件客户端，不可靠）；
-        // 外链新窗口打开。文本一律 textContent 防注入
-        if (contactsEl) {
-            contactsEl.innerHTML = '';
-            (author.contacts || []).forEach(contact => {
-                const el = document.createElement(contact.action === 'copy' ? 'button' : 'a');
-                if (contact.action === 'copy') el.type = 'button';
-                el.className = 'contact-item' + (contact.action === 'copy' ? ' contact-copy' : '');
-                if (contact.action === 'copy') {
-                    el.dataset.tooltip = '点击复制邮箱';
-                    el.setAttribute('aria-label', '复制邮箱地址');
-                    el.addEventListener('click', () => copyToClipboard(contact.value));
-                } else {
-                    el.href = contact.href || '#';
-                    if (contact.href && contact.href.startsWith('http')) {
-                        el.target = '_blank';
-                        el.rel = 'noopener noreferrer';
-                    }
+        // 联系方式（R68 起按归属分列）：邮箱属作者 → 左列容器；GitHub 属项目 → 右列容器。
+        // 邮箱点击复制到剪贴板（mailto 依赖邮件客户端不可靠）；外链新窗口。文本一律 textContent 防注入
+        const contactAuthorEl = overlay.querySelector('#authorModalContactAuthor');
+        const contactProjectEl = overlay.querySelector('#authorModalContactProject');
+        // R72：每次打开必须先清空容器——R68 分流渲染后丢失了 innerHTML='' 清空，
+        // 导致重复打开弹窗时邮箱/GitHub 累积 append、出现多次
+        if (contactAuthorEl) contactAuthorEl.innerHTML = '';
+        if (contactProjectEl) contactProjectEl.innerHTML = '';
+        (author.contacts || []).forEach(contact => {
+            const target = contact.side === 'project' ? contactProjectEl : contactAuthorEl;
+            if (!target) return;
+            const el = document.createElement(contact.action === 'copy' ? 'button' : 'a');
+            if (contact.action === 'copy') el.type = 'button';
+            el.className = 'contact-item' + (contact.action === 'copy' ? ' contact-copy' : '');
+            if (contact.action === 'copy') {
+                el.dataset.tooltip = '点击复制邮箱';
+                el.setAttribute('aria-label', '复制邮箱地址');
+                el.addEventListener('click', () => copyToClipboard(contact.value));
+            } else {
+                el.href = contact.href || '#';
+                if (contact.href && contact.href.startsWith('http')) {
+                    el.target = '_blank';
+                    el.rel = 'noopener noreferrer';
                 }
-                const icon = document.createElement('span');
-                icon.className = 'detail-icon';
-                const i = document.createElement('i');
-                i.className = contact.icon || 'fas fa-circle-info';
-                icon.appendChild(i);
-                const text = document.createElement('span');
-                text.className = 'contact-text';
-                const label = document.createElement('span');
-                label.className = 'contact-label';
-                label.textContent = contact.label || '';
-                const value = document.createElement('span');
-                value.className = 'contact-value';
-                value.textContent = contact.value || '';
-                text.appendChild(label);
-                text.appendChild(value);
-                if (contact.desc) {
-                    const desc = document.createElement('span');
-                    desc.className = 'contact-desc';
-                    desc.textContent = contact.desc;
-                    text.appendChild(desc);
-                }
-                el.appendChild(icon);
-                el.appendChild(text);
-                contactsEl.appendChild(el);
-            });
-        }
+            }
+            const icon = document.createElement('span');
+            icon.className = 'detail-icon';
+            const i = document.createElement('i');
+            i.className = contact.icon || 'fas fa-circle-info';
+            icon.appendChild(i);
+            const text = document.createElement('span');
+            text.className = 'contact-text';
+            const label = document.createElement('span');
+            label.className = 'contact-label';
+            label.textContent = contact.label || '';
+            const value = document.createElement('span');
+            value.className = 'contact-value';
+            value.textContent = contact.value || '';
+            text.appendChild(label);
+            text.appendChild(value);
+            if (contact.desc) {
+                const desc = document.createElement('span');
+                desc.className = 'contact-desc';
+                desc.textContent = contact.desc;
+                text.appendChild(desc);
+            }
+            el.appendChild(icon);
+            el.appendChild(text);
+            target.appendChild(el);
+        });
 
         overlay.hidden = false;
         document.body.classList.add('modal-open');
