@@ -462,6 +462,12 @@ const UIManager = (function() {
                 }
             });
         }
+        // 「关于作者」按钮（导航栏右侧，独立入口）：打开作者信息弹窗（R56）
+        const aboutAuthor = document.getElementById('aboutAuthor');
+        if (aboutAuthor) {
+            aboutAuthor.addEventListener('click', showAuthorModal);
+        }
+
         const themeBtn = document.getElementById('toggleTheme');
         if (themeBtn) {
             themeBtn.addEventListener('click', toggleTheme);
@@ -968,14 +974,14 @@ const UIManager = (function() {
                         <button type="button" class="layer-group-vis layer-group-zoom" data-tooltip="缩放至该数据集可见图层" aria-label="缩放至${safeName}可见图层">
                             <i class="fas fa-crosshairs"></i>
                         </button>
-                        <button type="button" class="layer-group-vis layer-group-info" data-tooltip="数据集介绍" aria-label="${safeName}介绍">
-                            <i class="fas fa-circle-info"></i>
-                        </button>
                         <div class="layer-group-more">
                             <button type="button" class="layer-group-more-btn" aria-haspopup="menu" aria-expanded="false" data-tooltip="更多操作" aria-label="${safeName}更多操作">
                                 <i class="fas fa-ellipsis-vertical"></i>
                             </button>
                             <div class="layer-group-more-menu" role="menu" data-group="${safeName}">
+                                <button type="button" class="more-item layer-group-info" role="menuitem" data-tooltip="数据集介绍" aria-label="${safeName}介绍">
+                                    <i class="fas fa-circle-info"></i><span>数据集介绍</span>
+                                </button>
                                 <button type="button" class="more-item layer-group-show" role="menuitem" data-tooltip="显示全部图层" aria-label="显示${safeName}全部图层">
                                     <i class="fas fa-eye"></i><span>显示全部</span>
                                 </button>
@@ -1019,14 +1025,6 @@ const UIManager = (function() {
                 zoomToDataset(name);
             });
 
-            // 数据集介绍：弹窗显示 manifest info（无则「暂无介绍」）
-            groupEl.querySelector('.layer-group-info')?.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const dataset = DataScanner.getDataset(name);
-                const info = dataset && dataset.info ? dataset.info : '暂无介绍';
-                showAppModal({ icon: 'fa-circle-info', title: name, message: info, confirmText: '知道了', cancelText: '' });
-            });
-
             // 「更多」菜单：打开/收起（点击外部与滚动由全局监听关闭）
             const moreWrap = groupEl.querySelector('.layer-group-more');
             const moreBtn = moreWrap ? moreWrap.querySelector('.layer-group-more-btn') : null;
@@ -1050,7 +1048,14 @@ const UIManager = (function() {
                 });
             }
 
-            // 菜单项：显示全部 / 隐藏全部 / 下载 / 移除
+            // 菜单项：数据集介绍 / 显示全部 / 隐藏全部 / 删除数据集
+            groupEl.querySelector('.layer-group-info')?.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeAllGroupMoreMenus();
+                const dataset = DataScanner.getDataset(name);
+                const info = dataset && dataset.info ? dataset.info : '暂无介绍';
+                showAppModal({ icon: 'fa-circle-info', title: name, message: info, confirmText: '知道了', cancelText: '' });
+            });
             groupEl.querySelector('.layer-group-show')?.addEventListener('click', function(e) {
                 e.stopPropagation();
                 if (this.disabled) return;
@@ -1668,6 +1673,140 @@ const UIManager = (function() {
         });
     }
 
+    // ---------- 复制到剪贴板（R59：邮箱点击复制，替代依赖邮件客户端的 mailto） ----------
+    // 优先 Clipboard API（localhost/https secure context 可用），失败回退 execCommand
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+                () => showToast(`已复制：${text}`, 'success'),
+                () => fallbackCopy(text)
+            );
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { /* 忽略 */ }
+        document.body.removeChild(ta);
+        showToast(ok ? `已复制：${text}` : '复制失败，请手动复制', ok ? 'success' : 'error');
+    }
+
+    // ---------- 作者信息弹窗（导航栏「关于作者」头像按钮打开） ----------
+    // 内容来自 CONFIG.author，纯 textContent 渲染防注入；关闭：关闭按钮 / 知道了 / 遮罩 / Esc
+    function showAuthorModal() {
+        const overlay = document.getElementById('authorModal');
+        if (!overlay) return;
+        const author = (typeof CONFIG !== 'undefined' && CONFIG.author) || {};
+        const nameEl = overlay.querySelector('#authorModalName');
+        const avatarEl = overlay.querySelector('#authorAvatar');
+        const taglineEl = overlay.querySelector('#authorModalTagline');
+        const bioEl = overlay.querySelector('#authorModalBio');
+        const detailsEl = overlay.querySelector('#authorModalDetails');
+        const contactsEl = overlay.querySelector('#authorModalContacts');
+        if (nameEl) nameEl.textContent = author.name || '佚名';
+        if (avatarEl) avatarEl.textContent = String(author.name || '?').trim().charAt(0);
+        if (taglineEl) taglineEl.textContent = author.tagline || '';
+        if (bioEl) bioEl.textContent = author.bio || '';
+        if (detailsEl) {
+            detailsEl.innerHTML = '';
+            (author.details || []).forEach(detail => {
+                const li = document.createElement('li');
+                const icon = document.createElement('span');
+                icon.className = 'detail-icon';
+                const i = document.createElement('i');
+                i.className = `fas ${detail.icon || 'fa-circle-info'}`;
+                icon.appendChild(i);
+                const text = document.createElement('span');
+                text.className = 'detail-text';
+                const label = document.createElement('span');
+                label.className = 'detail-label';
+                label.textContent = detail.label || '';
+                const value = document.createElement('span');
+                value.className = 'detail-value';
+                value.textContent = detail.value || '';
+                text.appendChild(label);
+                text.appendChild(value);
+                li.appendChild(icon);
+                li.appendChild(text);
+                detailsEl.appendChild(li);
+            });
+        }
+        // 联系方式（邮箱 / GitHub）：邮箱点击复制到剪贴板（mailto 依赖邮件客户端，不可靠）；
+        // 外链新窗口打开。文本一律 textContent 防注入
+        if (contactsEl) {
+            contactsEl.innerHTML = '';
+            (author.contacts || []).forEach(contact => {
+                const el = document.createElement(contact.action === 'copy' ? 'button' : 'a');
+                if (contact.action === 'copy') el.type = 'button';
+                el.className = 'contact-item' + (contact.action === 'copy' ? ' contact-copy' : '');
+                if (contact.action === 'copy') {
+                    el.dataset.tooltip = '点击复制邮箱';
+                    el.setAttribute('aria-label', '复制邮箱地址');
+                    el.addEventListener('click', () => copyToClipboard(contact.value));
+                } else {
+                    el.href = contact.href || '#';
+                    if (contact.href && contact.href.startsWith('http')) {
+                        el.target = '_blank';
+                        el.rel = 'noopener noreferrer';
+                    }
+                }
+                const icon = document.createElement('span');
+                icon.className = 'detail-icon';
+                const i = document.createElement('i');
+                i.className = contact.icon || 'fas fa-circle-info';
+                icon.appendChild(i);
+                const text = document.createElement('span');
+                text.className = 'contact-text';
+                const label = document.createElement('span');
+                label.className = 'contact-label';
+                label.textContent = contact.label || '';
+                const value = document.createElement('span');
+                value.className = 'contact-value';
+                value.textContent = contact.value || '';
+                text.appendChild(label);
+                text.appendChild(value);
+                if (contact.desc) {
+                    const desc = document.createElement('span');
+                    desc.className = 'contact-desc';
+                    desc.textContent = contact.desc;
+                    text.appendChild(desc);
+                }
+                el.appendChild(icon);
+                el.appendChild(text);
+                contactsEl.appendChild(el);
+            });
+        }
+
+        overlay.hidden = false;
+        document.body.classList.add('modal-open');
+        const closeBtn = overlay.querySelector('#authorModalClose');
+        const okBtn = overlay.querySelector('#authorModalOk');
+        const cleanup = () => {
+            overlay.hidden = true;
+            document.body.classList.remove('modal-open');
+            if (closeBtn) closeBtn.removeEventListener('click', onClose);
+            if (okBtn) okBtn.removeEventListener('click', onClose);
+            overlay.removeEventListener('click', onOverlay);
+            document.removeEventListener('keydown', onKey);
+        };
+        const onClose = () => cleanup();
+        const onOverlay = (e) => { if (e.target === overlay) cleanup(); };
+        const onKey = (e) => { if (e.key === 'Escape') cleanup(); };
+        if (closeBtn) closeBtn.addEventListener('click', onClose);
+        if (okBtn) okBtn.addEventListener('click', onClose);
+        overlay.addEventListener('click', onOverlay);
+        document.addEventListener('keydown', onKey);
+        if (okBtn) okBtn.focus();
+    }
+
     function showToast(message, type = 'info', duration = 3000) {
         const container = document.getElementById('toastContainer');
         if (!container) return;
@@ -1707,5 +1846,6 @@ const UIManager = (function() {
         toggleFullscreen,
         togglePanel,
         showToast,
+        showAuthorModal,
     };
 })();

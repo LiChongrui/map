@@ -1,0 +1,32 @@
+{
+"type": "FeatureCollection",
+"name": "城门",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "城门": "西直门" }, "geometry": { "type": "Point", "coordinates": [ 116.349528390000046, 39.938886978000028 ] } },
+{ "type": "Feature", "properties": { "城门": "阜成门" }, "geometry": { "type": "Point", "coordinates": [ 116.350463663000028, 39.92206958700001 ] } },
+{ "type": "Feature", "properties": { "城门": "西便门" }, "geometry": { "type": "Point", "coordinates": [ 116.347883551, 39.896768953 ] } },
+{ "type": "Feature", "properties": { "城门": "广宁门" }, "geometry": { "type": "Point", "coordinates": [ 116.343790958999989, 39.888172527 ] } },
+{ "type": "Feature", "properties": { "城门": "右安门" }, "geometry": { "type": "Point", "coordinates": [ 116.358003240000016, 39.868758088 ] } },
+{ "type": "Feature", "properties": { "城门": "永定门" }, "geometry": { "type": "Point", "coordinates": [ 116.393176174000018, 39.870713877000014 ] } },
+{ "type": "Feature", "properties": { "城门": "左安门" }, "geometry": { "type": "Point", "coordinates": [ 116.43296675900001, 39.870645769000021 ] } },
+{ "type": "Feature", "properties": { "城门": "广渠门" }, "geometry": { "type": "Point", "coordinates": [ 116.437643464999951, 39.892411440999979 ] } },
+{ "type": "Feature", "properties": { "城门": "东便门" }, "geometry": { "type": "Point", "coordinates": [ 116.433798326999977, 39.898297902000024 ] } },
+{ "type": "Feature", "properties": { "城门": "建国门" }, "geometry": { "type": "Point", "coordinates": [ 116.429349857000034, 39.907284340999979 ] } },
+{ "type": "Feature", "properties": { "城门": "朝阳门" }, "geometry": { "type": "Point", "coordinates": [ 116.428163598999959, 39.92309306300001 ] } },
+{ "type": "Feature", "properties": { "城门": "东直门" }, "geometry": { "type": "Point", "coordinates": [ 116.427718752000033, 39.939921358999982 ] } },
+{ "type": "Feature", "properties": { "城门": "德胜门" }, "geometry": { "type": "Point", "coordinates": [ 116.373483009999973, 39.947592779 ] } },
+{ "type": "Feature", "properties": { "城门": "安定门" }, "geometry": { "type": "Point", "coordinates": [ 116.402143016999958, 39.94766553300002 ] } },
+{ "type": "Feature", "properties": { "城门": "宣武门" }, "geometry": { "type": "Point", "coordinates": [ 116.367883870000014, 39.898393460000023 ] } },
+{ "type": "Feature", "properties": { "城门": "正阳门" }, "geometry": { "type": "Point", "coordinates": [ 116.391609745999972, 39.89884748999998 ] } },
+{ "type": "Feature", "properties": { "城门": "崇文门" }, "geometry": { "type": "Point", "coordinates": [ 116.412297390000049, 39.899412739000013 ] } },
+{ "type": "Feature", "properties": { "城门": "承天门" }, "geometry": { "type": "Point", "coordinates": [ 116.391189808000036, 39.906611797999972 ] } },
+{ "type": "Feature", "properties": { "城门": "东安门" }, "geometry": { "type": "Point", "coordinates": [ 116.400486272999956, 39.913872653999988 ] } },
+{ "type": "Feature", "properties": { "城门": "北安门" }, "geometry": { "type": "Point", "coordinates": [ 116.390140281999948, 39.931922471 ] } },
+{ "type": "Feature", "properties": { "城门": "西安门" }, "geometry": { "type": "Point", "coordinates": [ 116.371205283999984, 39.921123202 ] } },
+{ "type": "Feature", "properties": { "城门": "午门" }, "geometry": { "type": "Point", "coordinates": [ 116.391037431999962, 39.912412911999979 ] } },
+{ "type": "Feature", "properties": { "城门": "东华门" }, "geometry": { "type": "Point", "coordinates": [ 116.39526352200005, 39.913700921999975 ] } },
+{ "type": "Feature", "properties": { "城门": "西华门" }, "geometry": { "type": "Point", "coordinates": [ 116.386503480999977, 39.91350772200002 ] } },
+{ "type": "Feature", "properties": { "城门": "玄武门" }, "geometry": { "type": "Point", "coordinates": [ 116.390589634999969, 39.920999186000017 ] } }
+]
+}

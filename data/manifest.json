@@ -40,7 +40,43 @@
       "files": [
         { "file": "其他数据/古水系.geojson", "name": "古水系", "style": { "fillColor": "#20c5a8", "fillOpacity": 0.3, "strokeWidth": 0.5 } }
       ]
+    },
+    {
+      "name": "商洛阳-西亳城（偃师商城）",
+      "info": "商西亳（偃师商城）是商代早期都城遗址，位于今河南洛阳偃师。本数据集包含偃师商城城址与相关要素，反映商代早期都邑的城郭格局。",
+      "files": [
+        { "file": "商西亳/偃师商城.geojson", "name": "偃师商城", "style": { "fillColor": "#b45309", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "商西亳/其他要素.geojson", "name": "其他要素", "style": { "lineColor": "#f59e0b", "lineWidth": 1.5 } }
+      ]
+    },
+    {
+      "name": "周洛阳-周王城",
+      "info": "周王城是东周时期周天子的都城（王城），位于今洛阳市区。本数据集包含王城城址与相关要素，反映周代都城营建制度。",
+      "files": [
+        { "file": "周王城/周王城.geojson", "name": "周王城", "style": { "fillColor": "#7e22ce", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "周王城/其他要素.geojson", "name": "其他要素", "style": { "lineColor": "#a855f7", "lineWidth": 1.5 } }
+      ]
+    },
+    {
+      "name": "夏洛阳-斟鄩城（二里头）",
+      "info": "夏斟鄩（二里头遗址）是夏代中晚期都城遗址，学界多认为是夏都斟鄩所在，位于今洛阳偃师。本数据集包含二里头遗址城址与相关要素。",
+      "files": [
+        { "file": "夏斟鄩/二里头.geojson", "name": "二里头", "style": { "fillColor": "#0e7490", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "夏斟鄩/其他要素.geojson", "name": "其他要素", "style": { "lineColor": "#06b6d4", "lineWidth": 1.5 } }
+      ]
+    },
+    {
+      "name": "明清北京-城",
+      "info": "明清北京城是明清两代都城，本数据集包含城墙、城门、街道、水系与皇家坛庙等要素，反映明清北京城的整体格局。",
+      "files": [
+        { "file": "明清北京城/城墙.geojson", "name": "城墙", "style": { "lineColor": "#dc2626", "lineWidth": 1.5 } },
+        { "file": "明清北京城/城门.geojson", "name": "城门", "style": { "pointColor": "#eab308", "pointSize": 6 } },
+        { "file": "明清北京城/水系.geojson", "name": "水系", "style": { "fillColor": "#1d4ed8", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "明清北京城/街道.geojson", "name": "街道", "style": { "lineColor": "#92400e", "lineWidth": 1.2 } },
+        { "file": "明清北京城/其他要素.geojson", "name": "皇家坛庙", "style": { "fillColor": "#059669", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "明清北京城/城范围.geojson", "name": "城范围", "style": { "fillColor": "#be123c", "fillOpacity": 0.28, "strokeWidth": 0.5 } }
+      ]
     }
   ],
-  "updated": "2026-08-24"
+  "updated": "2026-08-25"
 }

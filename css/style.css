@@ -218,6 +218,46 @@ body {
     justify-content: center;
 }
 
+/* 作者入口（R57）：用户头像样式——accent 渐变圆形「洛」字，像应用右上角的用户头像，
+   与系统功能图标按钮（线性图标）视觉区分：非系统功能，而是"作者/用户"身份入口 */
+.nav-btn.user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(79, 110, 247, 0.35);
+    margin-left: 4px;
+    transition: all var(--transition-fast);
+}
+
+.nav-btn.user-avatar:hover {
+    background: var(--accent-gradient);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(79, 110, 247, 0.5);
+}
+
+.nav-btn.user-avatar:active {
+    transform: scale(0.95);
+}
+
+.nav-btn.user-avatar:focus-visible {
+    box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--accent-color);
+}
+
+/* 系统功能区与作者入口之间的竖向分隔标识（R58） */
+.nav-divider {
+    width: 1px;
+    height: 22px;
+    margin: 0 4px 0 10px;
+    background: var(--border-color);
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
 /* ===== Map ===== */
 #map {
     position: fixed;
@@ -2060,6 +2100,12 @@ button:focus-visible {
         padding: 0 14px;
         height: 52px;
     }
+    /* 窄屏：作者头像按钮略微缩小 */
+    .nav-btn.user-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+    }
     #map {
         top: 52px;
     }
@@ -2215,6 +2261,283 @@ button:focus-visible {
 .app-modal-footer .modal-btn.danger:hover {
     background: #dc2626;
     color: #fff;
+}
+
+/* ===== 作者信息弹窗（导航栏品牌区点击打开，R55） ===== */
+.author-modal-overlay[hidden] { display: none !important; }
+
+.author-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    animation: fadeIn var(--transition-fast) both;
+}
+
+.author-modal {
+    position: relative;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    border-radius: 16px;
+    background: var(--bg-secondary);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.32);
+    padding: 22px 22px 16px;
+    animation: modalIn 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.author-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.author-modal-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.author-modal-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-right: 28px;
+}
+
+.author-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(79, 110, 247, 0.4);
+    user-select: none;
+}
+
+.author-modal-head-text {
+    min-width: 0;
+}
+
+.author-modal-name {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+}
+
+.author-modal-tagline {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--accent-color);
+    font-weight: 500;
+    letter-spacing: 0.4px;
+}
+
+.author-modal-bio {
+    margin: 16px 0 0;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+.author-modal-details {
+    list-style: none;
+    margin: 16px 0 0;
+    padding: 0;
+    border-top: 1px solid var(--border-light);
+}
+
+.author-modal-details li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.author-modal-details li:last-child {
+    border-bottom: none;
+}
+
+.author-modal-details .detail-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.author-modal-details .detail-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.author-modal-details .detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+.author-modal-details .detail-value {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.author-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+/* 联系方式（邮箱 / GitHub，R57）：可点击行，hover 浅背景 + 值变 accent 色 */
+.author-modal-contacts {
+    margin: 4px 0 0;
+    border-top: 1px solid var(--border-light);
+    padding-top: 8px;
+}
+
+.author-modal-contacts .contact-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 6px;
+    margin: 2px 0;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.author-modal-contacts .contact-item:hover {
+    background: var(--bg-hover);
+}
+
+.author-modal-contacts .contact-item:active {
+    transform: scale(0.99);
+}
+
+.author-modal-contacts .contact-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.author-modal-contacts .contact-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+.author-modal-contacts .contact-value {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    word-break: break-all;
+    transition: color var(--transition-fast);
+}
+
+.author-modal-contacts .contact-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    letter-spacing: 0.1px;
+}
+
+.author-modal-contacts .contact-item:hover .contact-value {
+    color: var(--accent-color);
+}
+
+/* 邮箱「点击复制」按钮：与链接行同款外观（button 需重置默认样式） */
+.author-modal-contacts .contact-copy {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+}
+
+/* 友情赞助区块（R59）：二维码 + 说明 */
+.author-modal-sponsor {
+    margin: 4px 0 0;
+    border-top: 1px solid var(--border-light);
+    padding: 12px 6px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.author-modal-sponsor .sponsor-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.author-modal-sponsor .sponsor-title i {
+    color: var(--danger-color);
+    font-size: 11px;
+}
+
+.author-modal-sponsor .sponsor-qr {
+    width: 128px;
+    height: 128px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: #fff;
+    object-fit: contain;
+    padding: 4px;
+}
+
+.author-modal-sponsor .sponsor-desc {
+    margin: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    text-align: center;
 }
 
 .style-modal-overlay {
