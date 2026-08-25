@@ -179,12 +179,16 @@ const MapManager = (function() {
         const base = Array.isArray(options.padding) ? options.padding
             : (typeof options.padding === 'number' ? [options.padding, options.padding] : [32, 32]);
         const baseV = base[0], baseH = base[1];
+        // 基础 padding 均分到四边（TL/BR 各一半）——关键修正（R54）：
+        // Leaflet 把 bounds 居中放在「paddingTopLeft → size - paddingBottomRight」的可用区域内。
+        // 若把全部基础 padding 放 TL、BR 为 0（旧实现），无遮挡时可用区域 = (base, base) → (W, H)，
+        // 内容右下角会正好顶住容器右/底边界（#map 是 fixed 占满视口，即浏览器边界）。
+        // 均分后可用区域 = (base/2, base/2) → (W - base/2, H - base/2)，内容四周均匀留白；
+        // 且有效区域尺寸 W - TL.x - BR.x = W - base 不变 → 缩放级别与旧实现完全一致（不回归 R53）。
+        const halfV = baseV / 2, halfH = baseH / 2;
         // 图层面板遮挡避让：桌面端面板为右侧竖栏 → 右侧让位；
         // 移动端（≤768px）面板为底部浮层 → 底部让位。
         // 用遮挡区域形状判定主导方向（coverW≈1 且 coverH 较小 → 底部条；反之 → 右侧条）
-        // 关键：paddingBottomRight 只放「额外避让量」（无避让时为 0）——
-        // Leaflet 的 zoom 计算用「地图尺寸 - (paddingTopLeft + paddingBottomRight)」，
-        // 若把基础 padding 也放进 BR 会导致四周 padding 翻倍、内容被过度压缩
         let extraRight = 0, extraBottom = 0;
         const panel = document.getElementById('controlPanel');
         if (panel && !panel.classList.contains('collapsed')) {
@@ -205,8 +209,8 @@ const MapManager = (function() {
         // 注意：paddingTopLeft/paddingBottomRight 是 Point(x, y)，必须用 L.point 明确 x=水平/ y=垂直
         mapInstance.fitBounds(bounds, {
             ...options,
-            paddingTopLeft: L.point(baseH, baseV),
-            paddingBottomRight: L.point(extraRight, extraBottom),
+            paddingTopLeft: L.point(halfH, halfV),
+            paddingBottomRight: L.point(halfH + extraRight, halfV + extraBottom),
         });
     }
 
