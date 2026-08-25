@@ -1,0 +1,21 @@
+{
+"type": "FeatureCollection",
+"name": "州府治",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "雒阳", "Note": "洛阳" }, "geometry": { "type": "Point", "coordinates": [ 112.623791115000017, 34.734971134000034, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "晋阳", "Note": "太原" }, "geometry": { "type": "Point", "coordinates": [ 112.553535191000037, 37.828972313000065, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "高邑", "Note": "柏乡" }, "geometry": { "type": "Point", "coordinates": [ 114.681200503000014, 37.489935541000079, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "蓟县", "Note": "大兴" }, "geometry": { "type": "Point", "coordinates": [ 116.458474849000027, 39.894421841000053, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "临淄", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 118.603962563000096, 36.804895350000038, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "郯县", "Note": "郯城" }, "geometry": { "type": "Point", "coordinates": [ 118.378366603000018, 34.59936713400009, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "谯县", "Note": "亳州" }, "geometry": { "type": "Point", "coordinates": [ 115.778883085000075, 33.827003920000038, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "历阳", "Note": "和县" }, "geometry": { "type": "Point", "coordinates": [ 118.363397090000035, 31.684134827000037, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "龙编", "Note": "河内" }, "geometry": { "type": "Point", "coordinates": [ 105.885177413000065, 21.134498205000057, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "汉寿", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 111.95667876300007, 28.913982567000062, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "雒县", "Note": "广汉" }, "geometry": { "type": "Point", "coordinates": [ 104.274571691000062, 30.980265601000042, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "陇县", "Note": "张家川" }, "geometry": { "type": "Point", "coordinates": [ 106.207918728000038, 34.994380566000075, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "柳中城", "Note": "鄯善" }, "geometry": { "type": "Point", "coordinates": [ 89.763580033000039, 42.745146004000048, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "昌邑", "Note": "金乡" }, "geometry": { "type": "Point", "coordinates": [ 116.086140690000093, 35.394453220000059, 0.0 ] } }
+]
+}

@@ -1,0 +1,21 @@
+{
+"type": "FeatureCollection",
+"name": "道治所",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "长安", "Note": "京兆府" }, "geometry": { "type": "Point", "coordinates": [ 108.74702017900006, 34.260808908000058, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "洛阳", "Note": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 112.41794683, 34.670820577000086, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "汴州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 114.573674452000091, 34.691474213000049, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "魏州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 115.179893853000067, 36.349772994000034, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "扬州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 119.621137615000066, 32.392916491000051, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "洪州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 116.115109935000078, 28.65653102300007, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "广州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 113.306958999000017, 23.260443327000075, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "黔州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 108.22506777600006, 29.335328763000064, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "益州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 103.861965509000072, 30.709377357000051, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "梁州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 106.887652311000068, 33.196955242000058, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "襄州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 112.033848122000109, 32.002011941000035, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "蒲州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 110.496521408000035, 34.846892619000073, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "苏州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 120.936797799000033, 31.342120779000084, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "鄯州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 102.405977955000026, 36.542453016000081, 0.0 ] } }
+]
+}

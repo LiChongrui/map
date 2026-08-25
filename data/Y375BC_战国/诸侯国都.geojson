@@ -1,0 +1,22 @@
+{
+"type": "FeatureCollection",
+"name": "诸侯国都",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "临淄", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 118.291324499000098, 36.726293213000076, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "蓟", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 117.092936417000033, 39.491936036000084, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "灵寿", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 114.675471756000093, 38.130431849000047, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "邯郸", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 114.550296796, 36.599871159000088, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "安邑", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 111.037962265000033, 35.06256750600005, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "睢阳", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 115.665219638000053, 34.414691252000068, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "吴", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 120.677178344000026, 31.316788839000083, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "郢", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 111.970700943000054, 30.374016103000088, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "江州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 106.578874561000077, 29.615113903000065, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "成都", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 103.971043658000042, 30.821666334000042, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "雍", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 107.377138742000056, 34.510660773000041, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "新郑", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 113.801732986000047, 34.345783902000051, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "成周", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 112.664775841000051, 34.716225243000054, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "曲阜", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 117.052496157000064, 35.524338631000035, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "濮阳", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 115.022660041000108, 35.548032143000057, 0.0 ] } }
+]
+}

@@ -1,0 +1,24 @@
+{
+"type": "FeatureCollection",
+"name": "路治所",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "襄阳府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 112.12688765200005, 32.068781135000052, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "临安府", "Note": "杭州" }, "geometry": { "type": "Point", "coordinates": [ 120.184421205000035, 30.292638436000061, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "建康府", "Note": "南京" }, "geometry": { "type": "Point", "coordinates": [ 118.855529212000079, 32.030773514000089, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "扬州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 119.451653321000094, 32.402389457000083, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "庐州", "Note": "合肥" }, "geometry": { "type": "Point", "coordinates": [ 117.202385533000097, 31.801664666000079, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "福州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 119.303362466000067, 26.060086993000084, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "隆兴府", "Note": "南昌" }, "geometry": { "type": "Point", "coordinates": [ 115.964340647000085, 28.672496823000074, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "江陵府", "Note": "荆州" }, "geometry": { "type": "Point", "coordinates": [ 112.232615337000084, 30.351831228000037, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "潭州", "Note": "长沙" }, "geometry": { "type": "Point", "coordinates": [ 112.94528574800006, 28.178841478000038, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "兴元府", "Note": "汉中" }, "geometry": { "type": "Point", "coordinates": [ 107.059621132000075, 33.070878385000071, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "成都府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 104.027455103000079, 30.67536724200005, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "泸州", "Note": "" }, "geometry": { "type": "Point", "coordinates": [ 105.439200541000048, 28.886341500000071, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "夔州", "Note": "奉节" }, "geometry": { "type": "Point", "coordinates": [ 109.435220269000069, 31.028692207000063, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "广州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 113.290845635000096, 23.119967916000064, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "静江府", "Note": "桂林" }, "geometry": { "type": "Point", "coordinates": [ 110.270417397000074, 25.292261020000069, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "绍兴府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 120.537026332000096, 30.001406666000037, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "沔州", "Note": "略阳" }, "geometry": { "type": "Point", "coordinates": [ 106.149327982000045, 33.334596551000061, 0.0 ] } }
+]
+}

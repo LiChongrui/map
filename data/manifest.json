@@ -79,28 +79,62 @@
     },
     {
       "name": "唐-734年行政区划",
-      "info": "唐开元二十二年（公元734年）的行政区划。本数据集包含道（一级大区，如河南道、江南东道等）、州府（二级政区）及其治所（州府治所城），反映盛唐时期「道—州—县」三级制下的政区空间格局。",
+      "info": "唐开元二十二年（公元734年）的行政区划。本数据集包含道（一级大区，如河南道、江南东道等）、州府（二级政区）及其治所（州府治所城、道治所），反映盛唐时期「道—州—县」三级制下的政区空间格局。",
       "files": [
-        { "file": "唐_734年/道.geojson", "name": "道", "style": { "fillColor": "#ca8a04", "fillOpacity": 0.16, "strokeWidth": 0.6 } },
-        { "file": "唐_734年/州府.geojson", "name": "州府", "style": { "fillColor": "#0d9488", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
-        { "file": "唐_734年/州府治所.geojson", "name": "州府治所", "style": { "pointColor": "#db2777", "pointSize": 6 } }
+        { "file": "Y734_唐/道.geojson", "name": "道", "style": { "fillColor": "#ca8a04", "fillOpacity": 0.16, "strokeWidth": 0.6 } },
+        { "file": "Y734_唐/州府.geojson", "name": "州府", "style": { "fillColor": "#0d9488", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "Y734_唐/州府治所.geojson", "name": "州府治所", "style": { "pointColor": "#db2777", "pointSize": 6 } },
+        { "file": "Y734_唐/道治所.geojson", "name": "道治所", "style": { "pointColor": "#7c3aed", "pointSize": 6 } }
       ]
     },
     {
       "name": "北魏-497年行政区划",
       "info": "北魏太和二十一年（公元497年）前后的行政区划。本数据集包含州与镇（北魏军镇与州并行的边疆及内地政区）及其治所（州镇治所城，标注其今地），反映孝文帝迁都洛阳、推行汉化后北魏的政区格局。",
       "files": [
-        { "file": "北魏_497年/州镇.geojson", "name": "州镇", "style": { "fillColor": "#15803d", "fillOpacity": 0.18, "strokeWidth": 0.5 } },
-        { "file": "北魏_497年/州镇治所.geojson", "name": "州镇治所", "style": { "pointColor": "#f97316", "pointSize": 5 } }
+        { "file": "Y497_北魏/州镇.geojson", "name": "州镇", "style": { "fillColor": "#15803d", "fillOpacity": 0.18, "strokeWidth": 0.5 } },
+        { "file": "Y497_北魏/州镇治所.geojson", "name": "州镇治所", "style": { "pointColor": "#f97316", "pointSize": 5 } }
       ]
     },
     {
       "name": "北宋-1124年行政区划",
       "info": "北宋宣和六年（公元1124年）的行政区划。本数据集包含路（一级大区，如京东东路、两浙路等）、州府（二级政区）及其治所（路治所城），反映北宋晚期「路—州—县」三级制下的政区空间格局。",
       "files": [
-        { "file": "北宋_1124年/路.geojson", "name": "路", "style": { "fillColor": "#0ea5e9", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
-        { "file": "北宋_1124年/州府.geojson", "name": "州府", "style": { "fillColor": "#0369a1", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
-        { "file": "北宋_1124年/路治所.geojson", "name": "路治所", "style": { "pointColor": "#e11d48", "pointSize": 5 } }
+        { "file": "Y1124_北宋/路.geojson", "name": "路", "style": { "fillColor": "#0ea5e9", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "Y1124_北宋/州府.geojson", "name": "州府", "style": { "fillColor": "#0369a1", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+
+        { "file": "Y1124_北宋/路治所.geojson", "name": "路治所", "style": { "pointColor": "#e11d48", "pointSize": 5 } }
+      ]
+    },
+    {
+      "name": "南宋-1124年行政区划",
+      "info": "南宋嘉定十七年（公元1124年）前后的行政区划。本数据集包含路（一级大区，如两浙路、江南西路等）及其治所（路治所城），反映南宋偏安江南时期「路—州—县」三级制下的政区空间格局。",
+      "files": [
+        { "file": "Y1208_南宋/路.geojson", "name": "路", "style": { "fillColor": "#4f46e5", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "Y1208_南宋/路治所.geojson", "name": "路治所", "style": { "pointColor": "#c026d3", "pointSize": 5 } }
+      ]
+    },
+    {
+      "name": "元-1330年行政区划",
+      "info": "元中后期（约公元1330年）的行政区划。本数据集包含行中书省（一级大区，如中书省、江浙行省等）及其治所（行省府治），反映元代「行省—路—府—州—县」多层政区制下的空间格局。",
+      "files": [
+        { "file": "Y1330_元/行省.geojson", "name": "行省", "style": { "fillColor": "#059669", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "Y1330_元/行省府治.geojson", "name": "行省府治", "style": { "pointColor": "#84cc16", "pointSize": 5 } }
+      ]
+    },
+    {
+      "name": "东汉-189年行政区划",
+      "info": "东汉中平六年（公元189年）前后的行政区划。本数据集包含州（一级监察/政区，如豫州、荆州等）及其治所（州府治城），反映东汉晚期「州—郡—县」三级制下的政区空间格局。",
+      "files": [
+        { "file": "Y189_东汉/州.geojson", "name": "州", "style": { "fillColor": "#dc2626", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "Y189_东汉/州府治.geojson", "name": "州府治", "style": { "pointColor": "#eab308", "pointSize": 5 } }
+      ]
+    },
+    {
+      "name": "战国-前375年行政区划",
+      "info": "战国中期（约公元前375年）的诸侯疆域。本数据集包含主要诸侯国（如齐、楚、燕、韩、赵、魏、秦等）及其都城（诸侯国都），反映战国七雄并立、疆域犬牙交错的大争之世。",
+      "files": [
+        { "file": "Y375BC_战国/诸侯国.geojson", "name": "诸侯国", "style": { "fillColor": "#0891b2", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "Y375BC_战国/诸侯国都.geojson", "name": "诸侯国都", "style": { "pointColor": "#f59e0b", "pointSize": 5 } }
       ]
     }
   ],
