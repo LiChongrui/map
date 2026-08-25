@@ -76,6 +76,32 @@
         { "file": "明清北京城/其他要素.geojson", "name": "皇家坛庙", "style": { "fillColor": "#059669", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
         { "file": "明清北京城/城范围.geojson", "name": "城范围", "style": { "fillColor": "#be123c", "fillOpacity": 0.28, "strokeWidth": 0.5 } }
       ]
+    },
+    {
+      "name": "唐-734年行政区划",
+      "info": "唐开元二十二年（公元734年）的行政区划。本数据集包含道（一级大区，如河南道、江南东道等）、州府（二级政区）及其治所（州府治所城），反映盛唐时期「道—州—县」三级制下的政区空间格局。",
+      "files": [
+        { "file": "唐_734年/道.geojson", "name": "道", "style": { "fillColor": "#ca8a04", "fillOpacity": 0.16, "strokeWidth": 0.6 } },
+        { "file": "唐_734年/州府.geojson", "name": "州府", "style": { "fillColor": "#0d9488", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "唐_734年/州府治所.geojson", "name": "州府治所", "style": { "pointColor": "#db2777", "pointSize": 6 } }
+      ]
+    },
+    {
+      "name": "北魏-497年行政区划",
+      "info": "北魏太和二十一年（公元497年）前后的行政区划。本数据集包含州与镇（北魏军镇与州并行的边疆及内地政区）及其治所（州镇治所城，标注其今地），反映孝文帝迁都洛阳、推行汉化后北魏的政区格局。",
+      "files": [
+        { "file": "北魏_497年/州镇.geojson", "name": "州镇", "style": { "fillColor": "#15803d", "fillOpacity": 0.18, "strokeWidth": 0.5 } },
+        { "file": "北魏_497年/州镇治所.geojson", "name": "州镇治所", "style": { "pointColor": "#f97316", "pointSize": 5 } }
+      ]
+    },
+    {
+      "name": "北宋-1124年行政区划",
+      "info": "北宋宣和六年（公元1124年）的行政区划。本数据集包含路（一级大区，如京东东路、两浙路等）、州府（二级政区）及其治所（路治所城），反映北宋晚期「路—州—县」三级制下的政区空间格局。",
+      "files": [
+        { "file": "北宋_1124年/路.geojson", "name": "路", "style": { "fillColor": "#0ea5e9", "fillOpacity": 0.16, "strokeWidth": 0.5 } },
+        { "file": "北宋_1124年/州府.geojson", "name": "州府", "style": { "fillColor": "#0369a1", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
+        { "file": "北宋_1124年/路治所.geojson", "name": "路治所", "style": { "pointColor": "#e11d48", "pointSize": 5 } }
+      ]
     }
   ],
   "updated": "2026-08-25"

@@ -1,0 +1,13 @@
+{
+"type": "FeatureCollection",
+"name": "州府治所",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "治所": "河内县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 112.93927587710165, 35.091087979373611 ] } },
+{ "type": "Feature", "properties": { "治所": "管城县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 113.68313041605002, 34.757440699210505 ] } },
+{ "type": "Feature", "properties": { "治所": "梁县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 112.837135794363434, 34.166554296937107 ] } },
+{ "type": "Feature", "properties": { "治所": "陕县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 111.14650649882077, 34.756946565715296 ] } },
+{ "type": "Feature", "properties": { "治所": "河南县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 112.456058538280928, 34.647109968151213 ] } },
+{ "type": "Feature", "properties": { "治所": "洛阳县", "道": "都畿道" }, "geometry": { "type": "Point", "coordinates": [ 112.478375406443888, 34.685168824445171 ] } }
+]
+}

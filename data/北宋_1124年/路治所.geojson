@@ -1,0 +1,31 @@
+{
+"type": "FeatureCollection",
+"name": "路治所",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Name": "京兆府", "Note": "长安" }, "geometry": { "type": "Point", "coordinates": [ 108.74702017900006, 34.260808908000058, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "河南府", "Note": "洛阳" }, "geometry": { "type": "Point", "coordinates": [ 112.41794683, 34.670820577000086, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "开封府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 114.573674452000091, 34.691474213000049, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "太原府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 112.547653332000095, 37.890970026000048, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "真定府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 114.591274287000033, 38.16164116300007, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "大名府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 115.1501871910001, 36.283850865000034, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "青州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 118.488804618000017, 36.708195075000049, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "应天府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 115.653110824, 34.457756198000084, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "襄阳府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 112.12688765200005, 32.068781135000052, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "凤翔府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 107.394886968000037, 34.532656781000071, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "杭州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 120.184421205000035, 30.292638436000061, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "江宁府", "Note": "南京" }, "geometry": { "type": "Point", "coordinates": [ 118.855529212000079, 32.030773514000089, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "扬州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 119.451653321000094, 32.402389457000083, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "寿州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 117.541996153000014, 32.875943159000087, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "福州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 119.303362466000067, 26.060086993000084, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "洪州", "Note": "南昌" }, "geometry": { "type": "Point", "coordinates": [ 115.964340647000085, 28.672496823000074, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "江陵府", "Note": "荆州" }, "geometry": { "type": "Point", "coordinates": [ 112.232615337000084, 30.351831228000037, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "潭州", "Note": "长沙" }, "geometry": { "type": "Point", "coordinates": [ 112.94528574800006, 28.178841478000038, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "兴元府", "Note": "汉中" }, "geometry": { "type": "Point", "coordinates": [ 107.059621132000075, 33.070878385000071, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "成都府", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 104.027455103000079, 30.67536724200005, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "潼川府", "Note": "三台" }, "geometry": { "type": "Point", "coordinates": [ 105.083412187000079, 31.101334669000039, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "夔州", "Note": "奉节" }, "geometry": { "type": "Point", "coordinates": [ 109.435220269000069, 31.028692207000063, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "广州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 113.290845635000096, 23.119967916000064, 0.0 ] } },
+{ "type": "Feature", "properties": { "Name": "桂州", "Note": null }, "geometry": { "type": "Point", "coordinates": [ 110.270417397000074, 25.292261020000069, 0.0 ] } }
+]
+}
