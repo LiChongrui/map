@@ -7,48 +7,38 @@
     <link rel="icon" type="image/svg+xml" href="res/favicon.svg" />
 
     <!-- ===== Leaflet CSS ===== -->
-    <link rel="stylesheet" href="js/vendor/leaflet.css" />
+    <link rel="stylesheet" href="js/vendor/leaflet.css?v=R120" />
     <!-- ===== Font Awesome 图标库 ===== -->
-    <link rel="stylesheet" href="js/vendor/fontawesome-all.min.css" />
+    <link rel="stylesheet" href="js/vendor/fontawesome-all.min.css?v=R120" />
 
-    <!-- ===== 自定义 CSS ===== -->
-    <link rel="stylesheet" href="css/style.css" />
+    <!-- ===== 自定义 CSS（?v= 缓存穿透：每次改动升版本号，确保用户拿到最新样式） ===== -->
+    <link rel="stylesheet" href="css/style.css?v=R120" />
 </head>
 <body>
 
-    <!-- ===== 顶部导航栏 ===== -->
-    <header class="navbar">
-        <!-- 品牌区：纯标题，不承载功能 -->
-        <div class="navbar-brand">
-            <div class="brand-icon">
-                <img src="res/favicon.svg" alt="历史地图集" />
+    <!-- ===== 左侧边栏（参照 Copernicus Browser 全高侧边栏布局） ===== -->
+    <aside id="sidebar" class="sidebar">
+        <header class="sidebar-header">
+            <div class="sidebar-brand">
+                <div class="brand-icon">
+                    <img src="res/favicon.svg" alt="历史地图集" />
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">历史地图集</span>
+                </div>
             </div>
-            <div class="brand-text">
-                <span class="brand-title">历史地图集</span>
+            <div class="sidebar-header-actions">
+                <button type="button" class="nav-btn" id="toggleTheme" data-tooltip="切换主题" aria-label="切换主题">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button type="button" class="nav-btn" id="sidebarCollapse" data-tooltip="收起面板" aria-label="收起面板">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
             </div>
-        </div>
-        <div class="navbar-actions">
-            <button type="button" class="nav-btn" id="toggleTheme" data-tooltip="切换主题" aria-label="切换主题">
-                 <i class="fas fa-moon"></i>
-            </button>
-            <button type="button" class="nav-btn" id="toggleFullscreen" data-tooltip="切换全屏" aria-label="切换全屏">
-                 <i class="fas fa-expand"></i>
-            </button>
-            <button type="button" class="nav-btn active" id="togglePanel" data-tooltip="切换图层面板" aria-label="切换图层面板">
-                 <i class="fas fa-layer-group"></i>
-            </button>
-            <!-- 系统功能与作者入口之间的分隔标识 -->
-            <span class="nav-divider" aria-hidden="true"></span>
-            <!-- 作者入口：用户头像样式，独立于系统功能按钮 -->
-            <button type="button" class="nav-btn user-avatar" id="aboutAuthor" data-tooltip="关于" aria-label="关于">洛</button>
-        </div>
-    </header>
+        </header>
 
-    <!-- ===== 地图容器 ===== -->
-    <div id="map"></div>
-
-    <!-- ===== 现代化控制面板 ===== -->
-    <div id="controlPanel" class="control-panel">
+        <!-- ===== 图层面板（作为侧边栏主体） ===== -->
+        <div id="controlPanel" class="sidebar-body">
         <!-- 面板头部 -->
         <div class="panel-header">
             <div class="panel-header-title">
@@ -66,9 +56,6 @@
                     </button>
                     <div class="dataset-select-menu" role="dialog" aria-label="选择要加载的数据集"></div>
                 </div>
-                <button type="button" class="panel-btn-icon" id="panelCollapse" aria-label="关闭图层面板" data-tooltip="关闭面板">
-                    <i class="fas fa-times"></i>
-                </button>
             </div>
         </div>
 
@@ -117,10 +104,7 @@
                 </span>
             </div>
             <div class="footer-actions">
-                <button type="button" class="footer-btn" id="selectAll" data-tooltip="显示所有图层" aria-label="显示所有图层">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button type="button" class="footer-btn" id="deselectAll" data-tooltip="隐藏所有图层" aria-label="隐藏所有图层">
+                <button type="button" class="footer-btn" id="datasetVisToggle" data-tooltip="隐藏所有数据集" aria-label="隐藏所有数据集">
                     <i class="fas fa-eye-slash"></i>
                 </button>
                 <button type="button" class="footer-btn" id="zoomToAll" data-tooltip="缩放至全部可见图层" aria-label="缩放至全部可见图层">
@@ -130,8 +114,76 @@
         </div>
     </div>
 
-    <!-- ===== Toast 通知 ===== -->
-    <div id="toastContainer" class="toast-container"></div>
+    <!-- 关于入口融合在面板底部：点击打开作者/关于弹窗；图标用「洛」字，文本为「洛 人文历史 · 地理爱好者」 -->
+    <footer class="sidebar-footer" id="aboutFooter" role="button" tabindex="0" data-tooltip="关于：洛 · 人文历史 · 地理爱好者" aria-label="关于作者 洛">
+        <span class="sidebar-footer-icon sidebar-footer-logo" aria-hidden="true">洛</span>
+        <div class="sidebar-footer-text">
+            <span class="sidebar-footer-title">洛</span>
+            <span class="sidebar-footer-sub">人文历史 · 地理爱好者</span>
+        </div>
+    </footer>
+
+    </aside>
+
+    <!-- 侧边栏宽度拖拽调节手柄（桌面端，右缘；置于 sidebar 之外，避免被圆角 overflow 裁剪） -->
+    <div class="sidebar-resizer" id="sidebarResizer" role="separator" aria-label="拖动调节面板宽度" aria-orientation="vertical" title="拖动调节面板宽度"></div>
+
+<!-- 移动端侧边栏抽屉遮罩 -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- ===== 地图区域（含地图、搜索框、右工具栏） ===== -->
+<div class="map-area">
+    <div id="map"></div>
+
+    <!-- 地图左上角浮动按钮：面板收起时作为唯一可见入口，点击展开面板（位于左上方） -->
+    <button type="button" class="map-fab" id="layerFab" data-tooltip="展开面板" aria-label="展开面板" aria-expanded="true"><i class="fas fa-chevron-right"></i></button>
+
+    <!-- 地图右侧垂直工具栏（测量 / 定位 / 全屏） -->
+    <div class="map-tools" id="mapTools" role="group" aria-label="地图工具">
+        <button type="button" class="map-tool-btn measure-btn" data-tool="distance" data-tooltip="测距" aria-label="测距"><i class="fas fa-ruler-combined"></i></button>
+        <button type="button" class="map-tool-btn measure-btn" data-tool="area" data-tooltip="测面积" aria-label="测面积"><i class="fas fa-draw-polygon"></i></button>
+        <button type="button" class="map-tool-btn measure-btn" data-tool="clear" data-tooltip="清除测量" aria-label="清除测量"><i class="fas fa-eraser"></i></button>
+        <div class="tool-sep" aria-hidden="true"></div>
+        <button type="button" class="map-tool-btn" id="mapToolLocate" data-tooltip="定位到我的位置" aria-label="定位到我的位置"><i class="fas fa-location-arrow"></i></button>
+        <button type="button" class="map-tool-btn" id="toggleFullscreen" data-tooltip="切换全屏" aria-label="切换全屏"><i class="fas fa-expand"></i></button>
+    </div>
+    <!-- 底图切换下拉菜单（由 JS 定位到按钮下方） -->
+    <div class="base-layer-tool-menu" id="baseLayerToolMenu" role="menu" aria-label="底图选择"></div>
+
+    <!-- R106：独立「地点搜索」——图标按钮置于右侧工具栏左侧，点击展开搜索框 -->
+    <div class="place-search-floating" id="placeSearchFloating">
+        <div class="place-search-input-wrap">
+            <input
+                type="text"
+                id="placeSearchInput"
+                class="place-search-input"
+                placeholder="搜索地点..."
+                autocomplete="off"
+                aria-label="搜索地点"
+            />
+            <button type="button" class="place-search-clear" id="placeSearchClear" style="display:none;" aria-label="清除">
+                <i class="fas fa-times-circle"></i>
+            </button>
+            <div class="place-search-results" id="placeSearchResultsTop" role="listbox" aria-label="地点搜索结果"></div>
+        </div>
+        <button type="button" class="place-search-icon-btn" id="placeSearchToggle" aria-label="搜索地点" aria-expanded="false">
+            <i class="fas fa-search"></i>
+        </button>
+        <!-- R108：底图切换图标使用独立类，避免搜索展开时误染 active 态 -->
+        <button type="button" class="map-tool-icon-btn" id="basemapToggle" aria-label="切换底图" aria-haspopup="menu" aria-expanded="false">
+            <i class="fas fa-map"></i>
+        </button>
+    </div>
+</div>
+
+<!-- ===== Toast 通知 ===== -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- ===== 数据集加载中遮罩 ===== -->
+<div id="globalLoading" class="global-loading" hidden>
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <div class="loading-text" id="globalLoadingText">正在加载数据集…</div>
+</div>
 
     <!-- ===== 统一应用弹窗（确认 / 信息共用） ===== -->
     <div id="appModal" class="app-modal-overlay" hidden>
@@ -173,6 +225,31 @@
         </div>
     </div>
 
+    <!-- ===== 标注设置弹窗（R106：字段 / 文字色 / 扫边 / 字体） ===== -->
+    <div id="labelSettingsModal" class="style-modal-overlay" hidden>
+        <div class="style-modal" role="dialog" aria-modal="true" aria-labelledby="labelSettingsTitle">
+            <div class="style-modal-header">
+                <div class="style-modal-heading">
+                    <span class="style-modal-icon"><i class="fas fa-font"></i></span>
+                    <div class="style-modal-head-text">
+                        <h4 class="style-modal-title" id="labelSettingsTitle">标注设置</h4>
+                        <span class="style-modal-sub" id="labelSettingsSub">调整标注字段、文字颜色、扫边与字体</span>
+                    </div>
+                </div>
+                <button type="button" class="panel-btn-icon" id="labelSettingsClose" aria-label="关闭标注设置" data-tooltip="关闭">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="style-modal-body" id="labelSettingsBody"></div>
+            <div class="style-modal-footer">
+                <button type="button" class="modal-btn" id="labelSettingsReset">
+                    <i class="fas fa-undo-alt"></i> 恢复默认
+                </button>
+                <button type="button" class="modal-btn primary" id="labelSettingsDone">完成</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== 作者信息弹窗（导航栏品牌区点击打开） ===== -->
     <div id="authorModal" class="author-modal-overlay" hidden>
         <div class="author-modal" role="dialog" aria-modal="true" aria-labelledby="authorModalName">
@@ -209,17 +286,17 @@
     </div>
 
     <!-- ===== 第三方 JS（本地化，避免 CDN 失效导致地图/拖拽不可用） ===== -->
-    <script src="js/vendor/leaflet.js"></script>
+    <script src="js/vendor/leaflet.js?v=R120"></script>
     <!-- ===== SortableJS 拖拽排序（本地副本，避免 CDN 加载失败导致拖拽失效） ===== -->
-    <script src="js/vendor/Sortable.min.js"></script>
+    <script src="js/vendor/Sortable.min.js?v=R120"></script>
 
     <!-- ===== 自定义 JS ===== -->
-    <script src="js/config.js"></script>
-    <script src="js/measureTools.js"></script>
-    <script src="js/dataScanner.js"></script> 
-    <script src="js/mapManager.js"></script>
-    <script src="js/layerManager.js"></script>
-    <script src="js/uiManager.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/config.js?v=R120"></script>
+    <script src="js/measureTools.js?v=R120"></script>
+    <script src="js/dataScanner.js?v=R120"></script> 
+    <script src="js/mapManager.js?v=R120"></script>
+    <script src="js/layerManager.js?v=R120"></script>
+    <script src="js/uiManager.js?v=R120"></script>
+    <script src="js/main.js?v=R120"></script>
 </body>
 </html>

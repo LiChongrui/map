@@ -6,8 +6,8 @@
 
     // ---------- 初始化地图 ----------
     MapManager.init('map');
-    // 测量工具（测距 / 测面积，左上角）
-    MeasureTools.init(MapManager.getMap());
+    // 测量工具（测距 / 测面积，地图右侧垂直工具栏）
+    MeasureTools.init(MapManager.getMap(), document.getElementById('mapTools'));
     // 点击地图空白处（未点中要素）移除图层高亮
     MapManager.getMap().on('click', () => LayerManager.clearLayerHighlight());
     UIManager.init();
@@ -52,15 +52,5 @@
     }
 
     init();
-
-    window.__APP = {
-        map: MapManager,
-        layers: LayerManager,
-        ui: UIManager,
-        scanner: DataScanner,
-        config: CONFIG,
-    };
-
-    console.log('💡 调试: window.__APP');
 
 })();

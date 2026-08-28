@@ -8,8 +8,10 @@ const MeasureTools = (function() {
     let map = null;
     let mode = null;              // null | 'distance' | 'area'
     let points = [];
-    let measureLayers = [];
+    let measureLayers = [];       // 当前正在绘制的测量（实时预览/编辑中）
+    let committedLayers = [];     // R107：已完成的测量（双击结束后烘焙保留，点「清除测量」前持续叠加显示）
     let controlEl = null;
+    let toolbarContainer = null;
     let finished = false;         // 已完成测量（图形保留，等待清除）
 
     const DISTANCE_COLOR = '#4f6ef7';
@@ -17,38 +19,64 @@ const MeasureTools = (function() {
     const POINT_COLOR = '#4f6ef7';
 
     // ---------- 初始化 ----------
-    function init(mapInstance) {
+    // R83：支持传入外部工具栏容器；若提供，则按钮渲染到该容器，不创建 Leaflet control
+    function init(mapInstance, container) {
         if (!mapInstance || map) return;
         map = mapInstance;
-
-        const control = L.control({ position: 'topleft' });
-        control.onAdd = function() {
-            const container = L.DomUtil.create('div', 'leaflet-control measure-control');
-            container.setAttribute('role', 'group');
-            container.setAttribute('aria-label', '测量工具');
-            container.innerHTML = `
-                <button type="button" class="measure-btn" data-tool="distance" data-tooltip="测距" aria-label="测距"><i class="fas fa-ruler-combined"></i></button>
-                <button type="button" class="measure-btn" data-tool="area" data-tooltip="测面积" aria-label="测面积"><i class="fas fa-draw-polygon"></i></button>
-                <button type="button" class="measure-btn" data-tool="clear" data-tooltip="清除测量" aria-label="清除测量"><i class="fas fa-eraser"></i></button>
-            `;
-            controlEl = container;
-            container.querySelectorAll('.measure-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    onToolClick(btn.dataset.tool);
-                });
-            });
-            // 阻止测量控件点击冒泡到地图
-            L.DomEvent.disableClickPropagation(container);
-            return container;
-        };
-        control.addTo(map);
+        if (container) {
+            toolbarContainer = container;
+            bindToolbarButtons();
+        } else {
+            const control = L.control({ position: 'topright' });
+            control.onAdd = function() {
+                const c = L.DomUtil.create('div', 'leaflet-control measure-control');
+                c.setAttribute('role', 'group');
+                c.setAttribute('aria-label', '测量工具');
+                c.innerHTML = measureButtonsHTML();
+                controlEl = c;
+                bindButtons(c);
+                L.DomEvent.disableClickPropagation(c);
+                return c;
+            };
+            control.addTo(map);
+        }
 
         map.on('click', onMapClick);
         map.on('dblclick', onMapDblClick);
         map.on('mousemove', onMapMove);
     }
 
+    function measureButtonsHTML() {
+        return `
+            <button type="button" class="measure-btn map-tool-btn" data-tool="distance" data-tooltip="测距" aria-label="测距"><i class="fas fa-ruler-combined"></i></button>
+            <button type="button" class="measure-btn map-tool-btn" data-tool="area" data-tooltip="测面积" aria-label="测面积"><i class="fas fa-draw-polygon"></i></button>
+            <button type="button" class="measure-btn map-tool-btn" data-tool="clear" data-tooltip="清除测量" aria-label="清除测量"><i class="fas fa-eraser"></i></button>
+        `;
+    }
+
+    function bindButtons(root) {
+        root.querySelectorAll('.measure-btn').forEach(btn => {
+            btn.addEventListener('click', () => onToolClick(btn.dataset.tool));
+        });
+    }
+
+    function bindToolbarButtons() {
+        if (!toolbarContainer) return;
+        toolbarContainer.querySelectorAll('.measure-btn').forEach(btn => {
+            btn.addEventListener('click', () => onToolClick(btn.dataset.tool));
+        });
+    }
+
     // ---------- 工具按钮 ----------
+    // ---------- 测量内容变化通知（R93）----------
+    // 清除测量按钮依赖「地图上是否有测量内容」决定可用态；
+    // 通过 document 自定义事件广播，UIManager 监听后切换按钮禁用态。
+    function notifyChange() {
+        document.dispatchEvent(new CustomEvent('lyc:measurechange', {
+            detail: { count: committedLayers.length + measureLayers.length },
+        }));
+    }
+
     function onToolClick(tool) {
         if (tool === 'clear') {
             clearAll();
@@ -73,6 +101,7 @@ const MeasureTools = (function() {
         map.getContainer().classList.add('measuring');
         updateButtons();
         map.getContainer().style.cursor = 'crosshair';
+        notifyChange();
     }
 
     function deactivate() {
@@ -80,7 +109,10 @@ const MeasureTools = (function() {
         if (map.doubleClickZoom) map.doubleClickZoom.enable();
         map.getContainer().classList.remove('measuring');
         map.getContainer().style.cursor = '';
+        // 清理「进行中」的临时图形（已完成的测量在 committedLayers 中保留）
+        clearMeasureLayers();
         updateButtons();
+        notifyChange();
     }
 
     function clearAll() {
@@ -88,6 +120,8 @@ const MeasureTools = (function() {
         points = [];
         finished = false;
         clearMeasureLayers();
+        clearCommittedLayers();
+        notifyChange();
     }
 
     // ---------- 地图交互 ----------
@@ -117,6 +151,10 @@ const MeasureTools = (function() {
     function finishMeasure() {
         // 结果已实时标注在地图上（分段距离标签 / 多边形中心面积标签），无需结果条
         finished = true;
+        // R107：将本次测量烘焙为「已完成」图层，保留在地图上（不清理上次测量）；
+        //       仅当点击「清除测量」时才整体移除。后续再测一次会与本次叠加显示。
+        committedLayers = committedLayers.concat(measureLayers);
+        measureLayers = [];
         deactivate();
     }
 
@@ -164,7 +202,10 @@ const MeasureTools = (function() {
     // ---------- 渲染 ----------
     function redraw() {
         clearMeasureLayers();
-        if (points.length === 0) return;
+        if (points.length === 0) {
+            notifyChange();
+            return;
+        }
 
         points.forEach(ll => {
             measureLayers.push(L.marker(ll, {
@@ -209,6 +250,7 @@ const MeasureTools = (function() {
             });
             measureLayers.push(poly.addTo(map));
         }
+        notifyChange();
     }
 
     // 悬停预览：虚线示意下一点
@@ -230,9 +272,10 @@ const MeasureTools = (function() {
                     html: `<span>${formatLength(segLen)}</span>`,
                     iconSize: [0, 0],
                     iconAnchor: [0, 0],
-                }),
-            }).addTo(map));
+                    }),
+                }).addTo(map));
         }
+        notifyChange();
     }
 
     function clearMeasureLayers() {
@@ -240,9 +283,16 @@ const MeasureTools = (function() {
         measureLayers = [];
     }
 
+    // R107：仅移除「已完成」的测量图层（进行中的图形由 clearMeasureLayers 处理）
+    function clearCommittedLayers() {
+        committedLayers.forEach(layer => map.removeLayer(layer));
+        committedLayers = [];
+    }
+
     function updateButtons() {
-        if (!controlEl) return;
-        controlEl.querySelectorAll('.measure-btn').forEach(btn => {
+        const root = toolbarContainer || controlEl;
+        if (!root) return;
+        root.querySelectorAll('.measure-btn').forEach(btn => {
             btn.classList.toggle('active', mode === btn.dataset.tool);
         });
     }
@@ -251,6 +301,8 @@ const MeasureTools = (function() {
     return {
         init,
         clear: clearAll,
+        onToolClick,
+        getMode: () => mode,
     };
 
 })();

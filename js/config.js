@@ -33,6 +33,12 @@ const CONFIG = {
             options: { maxZoom: 19, attribution: '© Esri World Imagery' },
             icon: 'fa-satellite'
         },
+        'Sentinel-2 每日更新': {
+            type: 'esriExport',
+            url: 'https://sentinel.arcgis.com/arcgis/rest/services/Sentinel2/ImageServer',
+            options: { maxZoom: 19, attribution: '© Esri Sentinel-2 Views' },
+            icon: 'fa-satellite-dish'
+        },
         'OSM街道地图': {
             url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             options: { maxZoom: 19, attribution: '© OpenStreetMap contributors' },

@@ -4,6 +4,77 @@
 
 const LayerManager = (function() {
     const layers = new Map();
+    // R87：数据集级显隐集合（按数据集名）。隐藏某数据集时只把其图层移出地图，
+    // 不修改各图层自身的 info.visible（个体显隐状态保留），再次显示时按各自状态恢复。
+    const datasetHidden = new Set();
+
+    // ---------- 标注全局设置（R106：字段 / 文字色 / 扫边 / 字体，跨会话持久化） ----------
+    const LABEL_STORAGE_KEY = 'lyc_label_settings_v1';
+    function defaultLabelSettings() {
+        return { field: '', textColor: '', haloColor: '', haloWidth: '', fontFamily: '', fontSize: '', textOpacity: '', haloOpacity: '', show: null };
+    }
+    function loadLabelSettings() {
+        try {
+            const v = JSON.parse(localStorage.getItem(LABEL_STORAGE_KEY));
+            if (v && typeof v === 'object') {
+                const merged = Object.assign(defaultLabelSettings(), v);
+                // R109：旧版曾把全局默认字体误存为「宋体」，归一化为空（默认字体），
+                // 使未自定义字体的图层一律使用现代无衬线默认字体而非宋体
+                if (merged.fontFamily === '"SimSun","Songti SC",serif') {
+                    merged.fontFamily = '';
+                    try { localStorage.setItem(LABEL_STORAGE_KEY, JSON.stringify(merged)); } catch (e) {}
+                }
+                return merged;
+            }
+        } catch (e) { /* 解析失败用默认 */ }
+        return defaultLabelSettings();
+    }
+    let labelSettings = loadLabelSettings();
+    function persistLabelSettings() {
+        try { localStorage.setItem(LABEL_STORAGE_KEY, JSON.stringify(labelSettings)); } catch (e) { /* 存储失败不阻塞 */ }
+    }
+
+    // R108：每图层标注覆盖设置（全局标注基础上按图层单独调整）
+    const LAYER_LABEL_STORAGE_KEY = 'lyc_layer_label_settings_v1';
+    const labelOverrides = new Map();
+    function loadLayerLabelOverrides() {
+        try {
+            const v = JSON.parse(localStorage.getItem(LAYER_LABEL_STORAGE_KEY));
+            if (v && typeof v === 'object') return new Map(Object.entries(v));
+        } catch (e) { /* 解析失败则清空 */ }
+        return new Map();
+    }
+    labelOverrides.set('__init__', true); // 占位，随后清空
+    (function initLayerLabelOverrides() {
+        const loaded = loadLayerLabelOverrides();
+        labelOverrides.clear();
+        loaded.forEach((value, key) => labelOverrides.set(key, value));
+    })();
+    function persistLayerLabelOverrides() {
+        try {
+            const obj = Object.fromEntries(labelOverrides);
+            localStorage.setItem(LAYER_LABEL_STORAGE_KEY, JSON.stringify(obj));
+        } catch (e) { /* 存储失败不阻塞 */ }
+    }
+    function getEffectiveLabelSettings(id, override) {
+        override = override || labelOverrides.get(id) || {};
+        const merged = Object.assign({}, labelSettings, override);
+        // R115：全局标注面板自 R110 起已不可达，全局 textColor/haloColor 成为静默覆盖各图层
+        // 图例色的「孤儿」设置。未在某图层显式设置文字色/扫边色时，应回落到图例色（文字）/
+        // 白色（扫边），而非继承孤儿全局色——满足「默认标注颜色从图例颜色提取」。
+        if (!('textColor' in override) || !override.textColor) merged.textColor = '';
+        if (!('haloColor' in override) || !override.haloColor) merged.haloColor = '';
+        return merged;
+    }
+
+    // 数据集加载状态监听（UIManager 用以显示/隐藏「加载中」遮罩）
+    const loadingListeners = [];
+    function emitLoading(state, name) {
+        loadingListeners.forEach(fn => { try { fn(state, name); } catch (e) {} });
+    }
+    function setLoadingListener(fn) {
+        if (typeof fn === 'function' && !loadingListeners.includes(fn)) loadingListeners.push(fn);
+    }
 
     // ---------- 样式生成 ----------
     const STYLE_STORAGE_KEY = 'lyc_layer_styles_v1';
@@ -199,9 +270,79 @@ const LayerManager = (function() {
 
     // ---------- 标注定位 ----------
 
-    // 多边形内部标注点：polylabel 简化版（网格采样 + 细分迭代），
-    // 返回「离所有边界最远」的内部点——对凹多边形 / 带洞多边形也保证在多边形内部中心。
-    // 局部小范围用等距圆柱近似（lng 乘 cos(lat0) 平面化，与面积计算一致）
+    // 射线法：点 (x,y) 是否在某环内（直接基于经纬度，无需缩放）
+    function inRingXY(x, y, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = ring[i][0], yi = ring[i][1];
+            const xj = ring[j][0], yj = ring[j][1];
+            if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
+        }
+        return inside;
+    }
+
+    // 点 (x,y) 是否在某组多边形内（任一外环内且不在任何洞内）。
+    // polygons 元素为 [ring, hole, ...]（Polygon / MultiPolygon 的单块坐标）
+    function insidePolygons(x, y, polygons) {
+        for (const polygon of polygons || []) {
+            const rings = Array.isArray(polygon[0][0]) ? polygon : [polygon];
+            const outer = rings[0];
+            if (!outer || outer.length < 3) continue;
+            if (!inRingXY(x, y, outer)) continue;
+            let inHole = false;
+            for (let h = 1; h < rings.length; h++) {
+                if (rings[h] && inRingXY(x, y, rings[h])) { inHole = true; break; }
+            }
+            if (!inHole) return true;
+        }
+        return false;
+    }
+
+    // 面积加权质心（带洞多边形：外环加、内环减）。坐标直接为经纬度，仅用于「标注落点」无需投影
+    function polygonCentroid(polygons) {
+        let totalArea = 0, cx = 0, cy = 0;
+        for (const polygon of polygons || []) {
+            const rings = Array.isArray(polygon[0][0]) ? polygon : [polygon];
+            for (let r = 0; r < rings.length; r += 1) {
+                const ring = rings[r];
+                if (!ring || ring.length < 3) continue;
+                let a = 0, rx = 0, ry = 0;
+                for (let i = 0; i < ring.length - 1; i += 1) {
+                    const [x1, y1] = ring[i];
+                    const [x2, y2] = ring[i + 1];
+                    const cross = x1 * y2 - x2 * y1;
+                    a += cross;
+                    rx += (x1 + x2) * cross;
+                    ry += (y1 + y2) * cross;
+                }
+                a *= 0.5;
+                if (Math.abs(a) < 1e-12) continue;
+                const sign = r === 0 ? 1 : -1;
+                totalArea += sign * a;
+                // R98 修复：分子只累加 sign·rx（rx = Σ(x1+x2)·cross = 6·A_i·Cx_i），
+                // 再统一除以 6·totalArea。旧写法误乘 a（面积）导致质心 ≈ 真实重心×面积，
+                // 全部坍缩到 (0,0) 附近——即「多边形标注失效」（R92 引入，标注默认关闭未察觉）
+                cx += sign * rx;
+                cy += sign * ry;
+            }
+        }
+        if (Math.abs(totalArea) < 1e-12) return null;
+        // 面积加权质心标准公式：C = (1/(6A)) · Σ(x1+x2)·cross ；此处 totalArea = A = ½·Σcross，
+        // 故需除以 6·totalArea（漏除会差 6 倍，导致标注点远离真实重心）
+        return L.latLng(cy / (6 * totalArea), cx / (6 * totalArea));
+    }
+
+    // 多边形标注点（R97）：按用户要求直接使用「面积加权几何重心」；
+    // 仅当重心计算失败（退化几何）时回退到内部点方案
+    function polygonLabelPoint(polygons) {
+        const c = polygonCentroid(polygons);
+        return c || polygonInteriorPoint(polygons);
+    }
+
+    // 多边形内部标注点（回退方案）：polylabel 简化版（网格采样 + 细分迭代），
+    // 返回「离所有边界最远」的内部点——对凹多边形 / 带洞多边形也保证在多边形内部。
+    // 直接使用经纬度网格 + 等距圆柱投影到米做距离比较（按各点自身纬度 cos 缩放），
+    // 不再对整片区域套用统一 cos(lat) 缩放，避免大范围多边形（道/路/州等）经度被压缩导致标注点偏东/偏西。
     function polygonInteriorPoint(polygons) {
         const outerRings = [];
         const holes = [];
@@ -224,35 +365,21 @@ const LayerManager = (function() {
                 if (c[1] > maxY) maxY = c[1];
             }
         }
-        const cosLat = Math.cos((minY + maxY) / 2 * Math.PI / 180) || 1;
-        const toXY = c => [c[0] * cosLat, c[1]];
-        const outerXY = outerRings.map(r => r.map(toXY));
-        const holesXY = holes.map(r => r.map(toXY));
-        const width = (maxX - minX) * cosLat || 1;
-        const height = maxY - minY || 1;
+        const R = 6378137; // 地球半径（米），等距圆柱投影用
+        const toMeters = (x, y) => [x * Math.PI / 180 * R * Math.cos(y * Math.PI / 180), y * Math.PI / 180 * R];
+        // 点是否在该多边形（外环并集、挖去洞）内部：复用模块级 insidePolygons
+        const inside = (x, y) => insidePolygons(x, y, [outerRings.concat(holes)]);
 
-        // 射线法：点是否在环内（平面化坐标）
-        const inRing = (x, y, ring) => {
-            let inside = false;
-            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-                const xi = ring[i][0], yi = ring[i][1];
-                const xj = ring[j][0], yj = ring[j][1];
-                if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
-            }
-            return inside;
-        };
-        const inside = (x, y) =>
-            outerXY.some(r => inRing(x, y, r)) && !holesXY.some(r => inRing(x, y, r));
-
-        const distToSeg = (x, y, ax, ay, bx, by) => {
-            const dx = bx - ax, dy = by - ay;
+        const distToSeg = (px, py, ax, ay, bx, by) => {
+            const A = toMeters(ax, ay), B = toMeters(bx, by), P = toMeters(px, py);
+            const dx = B[0] - A[0], dy = B[1] - A[1];
             const len2 = dx * dx + dy * dy;
-            const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
-            return Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+            const t = len2 ? Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / len2)) : 0;
+            return Math.hypot(P[0] - (A[0] + dx * t), P[1] - (A[1] + dy * t));
         };
         const distToBoundary = (x, y) => {
             let min = Infinity;
-            const all = outerXY.concat(holesXY);
+            const all = outerRings.concat(holes);
             for (const ring of all) {
                 for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
                     const d = distToSeg(x, y, ring[i][0], ring[i][1], ring[j][0], ring[j][1]);
@@ -262,12 +389,12 @@ const LayerManager = (function() {
             return min;
         };
 
-        // 网格采样（24×24），取内部「离边界最远」的点
-        const stepX = width / 24, stepY = height / 24;
+        // 网格采样（28×28），取内部「离边界最远」的点（坐标均为经纬度，直接返回无需反算）
+        const stepX = (maxX - minX) / 28 || 1e-6, stepY = (maxY - minY) / 28 || 1e-6;
         let bestX = null, bestY = null, bestDist = -1;
-        for (let i = 0; i <= 24; i++) {
-            for (let j = 0; j <= 24; j++) {
-                const x = minX * cosLat + i * stepX;
+        for (let i = 0; i <= 28; i++) {
+            for (let j = 0; j <= 28; j++) {
+                const x = minX + i * stepX;
                 const y = minY + j * stepY;
                 if (!inside(x, y)) continue;
                 const d = distToBoundary(x, y);
@@ -292,7 +419,21 @@ const LayerManager = (function() {
             if (found) { cx = bestX; cy = bestY; }
             cell /= 2;
         }
-        return L.latLng(bestY, bestX / cosLat);
+        return L.latLng(bestY, bestX);
+    }
+
+    // 判断一条线（LineString / 多段线）是否为闭合环（首末点重合），用于把城墙等闭合线按面处理
+    function isClosedLine(geometry) {
+        if (!geometry) return false;
+        const lines = geometry.type === 'LineString'
+            ? [geometry.coordinates]
+            : (geometry.type === 'MultiLineString' ? geometry.coordinates : []);
+        for (const line of lines) {
+            if (!line || line.length < 4) continue;
+            const a = line[0], b = line[line.length - 1];
+            if (Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6) return true;
+        }
+        return false;
     }
 
     // 线标注点：按累计长度取整条线中点，并返回中点所在段的屏幕方向角（用于判断是否垂直排列标注）
@@ -369,10 +510,10 @@ const LayerManager = (function() {
             }
 
             case 'Polygon':
-                return polygonInteriorPoint([coordinates]);
+                return polygonLabelPoint([coordinates]);
 
             case 'MultiPolygon':
-                return polygonInteriorPoint(coordinates);
+                return polygonLabelPoint(coordinates);
 
             case 'GeometryCollection':
                 for (const sub of (geometry.geometries || [])) {
@@ -389,13 +530,35 @@ const LayerManager = (function() {
         return fallback.isValid() ? fallback.getCenter() : null;
     }
 
-    // 标注字段：取数据的第一个属性字段（不固定使用 name），无属性数据返回 null
+    // 标注字段：按「更像名称」的启发式挑选最合适的属性字段，而非简单取第一个。
+    // 评分：① 字段名精确为 name/名称/地名 最高；② 字段值基数（distinct 数）越高越像实体名；
+    // ③ 非空值数量越多越优先。解决如「州府」数据集第一个字段是「道」（上级区划）导致标注错位的问题。
     function getLabelField(data) {
-        for (const feature of (data.features || [])) {
-            const keys = Object.keys(feature.properties || {});
-            if (keys.length > 0) return keys[0];
+        const feats = data.features || [];
+        const keys = new Set();
+        for (const f of feats) Object.keys(f.properties || {}).forEach(k => keys.add(k));
+        const keyList = [...keys];
+        if (keyList.length === 0) return null;
+
+        const EXACT = ['name', '名称', '地名', 'label', 'title'];
+        let bestKey = null, bestScore = -1;
+        for (const key of keyList) {
+            const kl = key.toLowerCase();
+            let score = 0;
+            if (EXACT.includes(kl) || EXACT.includes(key)) score += 1000;
+            let nonEmpty = 0, distinct = new Set();
+            for (const f of feats) {
+                const v = f.properties ? f.properties[key] : undefined;
+                if (v === undefined || v === null) continue;
+                const s = String(v).trim();
+                if (!s) continue;
+                nonEmpty += 1;
+                distinct.add(s);
+            }
+            score += nonEmpty + distinct.size * 3;
+            if (score > bestScore) { bestScore = score; bestKey = key; }
         }
-        return null;
+        return bestKey;
     }
 
     // 要素标注文本：标注字段值 trim；空值返回空字符串（该要素不显示标注）
@@ -404,40 +567,42 @@ const LayerManager = (function() {
         return String(feature.properties?.[labelField] ?? '').trim();
     }
 
-    function createLabelLayer(data, styleConfig) {
+    function createLabelLayer(data, styleConfig, labelOpts) {
+        labelOpts = labelOpts || labelSettings;
         const labelLayer = L.layerGroup();
-        // 标注默认取数据的第一个属性字段（而非固定 name 字段）
-        const labelField = getLabelField(data);
+        // 标注字段：用户全局指定则优先，否则每图层自动选取（第一个有值的属性字段）
+        const labelField = labelOpts.field || getLabelField(data);
         data.features.forEach(feature => {
             // trim 过滤纯空白值（数据中存在单个空格的标注值，会渲染出空标注）
             const name = getFeatureLabel(feature, labelField);
             if (!name) return;
             const geometry = feature.geometry;
             if (!geometry) return;
-            const position = getLabelPosition(geometry);
+            let position = getLabelPosition(geometry);
             if (!position) return;
 
-            // 标注主题色：与图层主色一致（面=填充色/线=线色/点=点色），随样式配置实时变化
+            // 标注主题色：默认随图层主色（面=填充色/线=线色/点=点色）；用户自定义文字色则覆盖
             const kind = getGeometryKind(geometry) || 'polygon';
-            const labelColor = getThemeColor(styleConfig, kind) || '#334155';
+            let labelColor = getThemeColor(styleConfig, kind) || '#334155';
+            if (labelOpts.textColor) labelColor = labelOpts.textColor;
             // 统一归类到 point / linestring / polygon 三个样式类，Multi* 也能正确居中
-            const geomClass = kind === 'point' ? 'point' : (kind === 'line' ? 'linestring' : 'polygon');
+            let geomClass = kind === 'point' ? 'point' : (kind === 'line' ? 'linestring' : 'polygon');
 
-            // 线要素：标注始终横向排列（不随线走向旋转、不竖排），
-            // 仅沿法线方向偏移到线旁（不压线）。Mercator 投影保角，屏幕方向角不随缩放/平移变化
             let vertical = false;
             let offsetAttr = '';
-            if (kind === 'line') {
-                const centerInfo = lineCenter(geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates);
-                if (centerInfo) {
-                    const lineWidth = Math.max(0.5, Number(styleConfig.lineWidth) || 2.5);
-                    const normalGap = Math.max(7, lineWidth / 2 + 5);
-                    const rad = centerInfo.angle * Math.PI / 180;
-                    // 法线朝屏幕上方一侧（水平线时标注在线上方），文字保持正向横向排列
-                    const dx = Math.round(-Math.sin(rad) * normalGap * 10) / 10;
-                    const dy = Math.round(-Math.cos(rad) * normalGap * 10) / 10;
-                    offsetAttr = `;--label-dx:${dx}px;--label-dy:${dy}px`;
-                }
+            // 闭合环线（如城墙）：按「面」处理，标注落在环内而非周长中点（避免标签贴在外侧城墙上）
+            let closedLine = false;
+            if (kind === 'line' && isClosedLine(geometry)) {
+                const poly = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+                const interior = polygonInteriorPoint(poly);
+                if (interior) { position = interior; geomClass = 'polygon'; closedLine = true; }
+            }
+
+            // R97：线要素标注放在「线上中心位置」（lineCenter 中点即在线上），
+            // 不再沿法线偏移到线旁；配合 CSS 居中锚定（translate(-50%,-50%)）实现水平垂直双居中。
+            // 文字色带晕渲描边，压线也保持可读。
+            if (kind === 'line' && !closedLine) {
+                offsetAttr = '';
             }
 
             // 点要素：标注抬升量随点大小/边线变化，紧贴圆点上方（间隙为 0）
@@ -448,8 +613,18 @@ const LayerManager = (function() {
             }
 
             const labelClass = `map-feature-label map-feature-label--${geomClass}${vertical ? ' map-feature-label--vertical' : ''}`;
-            // 颜色经 CSS 变量传递：暗色主题下由 CSS 提亮，保证在底衬上的可读性
-            const styleAttr = `--label-color:${escapeHtml(labelColor)}${offsetAttr}`;
+            // 标注样式：基础色经 CSS 变量传递（暗色主题下由 CSS 提亮）；若用户设了自定义项，则叠加内联样式覆盖
+            const textOpacity = (labelOpts.textOpacity === '' || labelOpts.textOpacity == null) ? 1 : clamp01(Number(labelOpts.textOpacity));
+            const labelStyleParts = [`--label-color:${escapeHtml(labelColor)}${offsetAttr}`];
+            if (labelOpts.textColor) labelStyleParts.push(`color:${escapeHtml(hexToRgba(labelColor, textOpacity))}`);
+            if (labelOpts.haloColor) {
+                const haloOpacityVal = (labelOpts.haloOpacity === '' || labelOpts.haloOpacity == null) ? 1 : clamp01(Number(labelOpts.haloOpacity));
+                labelStyleParts.push(`--label-halo:${escapeHtml(hexToRgba(labelOpts.haloColor, haloOpacityVal))}`);
+            }
+            if (labelOpts.haloWidth !== '' && labelOpts.haloWidth != null) labelStyleParts.push(`-webkit-text-stroke-width:${Number(labelOpts.haloWidth)}px`);
+            if (labelOpts.fontFamily) labelStyleParts.push(`font-family:${escapeHtml(labelOpts.fontFamily)}`);
+            if (labelOpts.fontSize) labelStyleParts.push(`font-size:${Number(labelOpts.fontSize)}px`);
+            const styleAttr = labelStyleParts.join(';');
             L.marker(position, {
                 icon: L.divIcon({
                     // 外层 wrapper 承载 Leaflet 的定位 transform；真正的居中 transform 放在内层，
@@ -556,6 +731,7 @@ const LayerManager = (function() {
     // ---------- 加载单个图层 ----------
     function loadLayer(sourceConfig) {
         const { id, name, url, visible } = sourceConfig;
+        const group = sourceConfig.group || '未分组';
 
         if (layers.has(id)) {
             removeLayer(id);
@@ -603,7 +779,7 @@ const LayerManager = (function() {
                     }),
                     onEachFeature: (feature, layer) => bindPopup(feature, layer, layerInfo),
                 });
-                const { labelLayer, labelField } = createLabelLayer(data, styleConfig);
+                const { labelLayer, labelField } = createLabelLayer(data, styleConfig, getEffectiveLabelSettings(id));
 
                 layerInfo.layer = geoLayer;
                 layerInfo.labelLayer = labelLayer;
@@ -612,7 +788,8 @@ const LayerManager = (function() {
 
                 layers.set(id, layerInfo);
 
-                if (visible) {
+                // R87：数据集被隐藏时，即使图层本身 visible 也不加入地图（个体状态保留，待数据集重新显示时恢复）
+                if (visible && !datasetHidden.has(group)) {
                     geoLayer.addTo(map);
                 }
 
@@ -637,6 +814,7 @@ const LayerManager = (function() {
         const pending = dataset.sources.filter(source => !layers.has(source.id));
         if (pending.length === 0) return Promise.resolve({ loaded: 0, failed: 0 });
 
+        emitLoading(true, name);
         return Promise.all(pending.map(source => loadLayer(source))).then(() => {
             // 应用拖拽保存的顺序（新数据集图层按来源顺序追加在末尾），并按最终顺序重设叠加次序
             applySavedOrder();
@@ -650,6 +828,8 @@ const LayerManager = (function() {
             updateStats();
             UIManager.updateButtonsState(layers.size > 0);
             return { loaded, failed };
+        }).finally(() => {
+            emitLoading(false, name);
         });
     }
 
@@ -677,6 +857,7 @@ const LayerManager = (function() {
         const ids = [...layers.entries()]
             .filter(([, info]) => (info.config.group || '未分组') === name)
             .map(([id]) => id);
+        datasetHidden.delete(name);
         if (ids.length === 0) return false;
 
         ids.forEach(id => {
@@ -731,12 +912,14 @@ const LayerManager = (function() {
     function setAllVisibility(visible, targetLayers = layers) {
         const map = MapManager.getMap();
         targetLayers.forEach(info => {
+            const group = info.config.group || '未分组';
             if (info.visible !== visible) {
                 info.visible = visible;
-                if (visible) {
+                // R87：数据集被隐藏时，即便「显示全部」也不把图层加到地图（保留数据集隐藏态）
+                if (visible && !datasetHidden.has(group)) {
                     map.addLayer(info.layer);
                     if (info.labelsVisible) info.labelLayer.addTo(map);
-                } else {
+                } else if (!visible) {
                     map.removeLayer(info.layer);
                     if (info.labelsVisible) map.removeLayer(info.labelLayer);
                 }
@@ -762,6 +945,7 @@ const LayerManager = (function() {
         if (!info) return;
 
         const map = MapManager.getMap();
+        const group = info.config.group || '未分组';
 
         if (info.visible) {
             map.removeLayer(info.layer);
@@ -770,8 +954,11 @@ const LayerManager = (function() {
             // 高亮中的图层被隐藏时自动取消高亮
             if (highlightedId === id) clearLayerHighlight();
         } else {
-            map.addLayer(info.layer);
-            if (info.labelsVisible) info.labelLayer.addTo(map);
+            // R87：数据集被隐藏时，即便图层自身设为可见也不加到地图（受数据集隐藏态约束）
+            if (!datasetHidden.has(group)) {
+                map.addLayer(info.layer);
+                if (info.labelsVisible) info.labelLayer.addTo(map);
+            }
             info.visible = true;
         }
 
@@ -780,6 +967,56 @@ const LayerManager = (function() {
         UIManager.updateLegend();
         UIManager.updateButtonsState();
         updateStats();
+    }
+
+    // ---------- 数据集级显隐（R87） ----------
+    // 隐藏/显示「整个数据集」：只把该数据集图层移出/移回地图，不修改各图层自身的 info.visible，
+    // 因此再次显示时每个图层按自己原来的显隐状态恢复。与「显示全部/隐藏全部」(setAllVisibility) 语义不同。
+    function isDatasetHidden(name) { return datasetHidden.has(name); }
+
+    function setDatasetVisible(name, visible) {
+        const map = MapManager.getMap();
+        if (visible) datasetHidden.delete(name);
+        else datasetHidden.add(name);
+
+        getLayersByGroup(name).forEach(info => {
+            if (visible) {
+                // 仅当图层自身可见时才加回地图（个体隐藏态被保留）
+                if (info.visible) {
+                    map.addLayer(info.layer);
+                    if (info.labelsVisible) info.labelLayer.addTo(map);
+                }
+            } else {
+                if (map.hasLayer(info.layer)) map.removeLayer(info.layer);
+                if (info.labelsVisible && map.hasLayer(info.labelLayer)) map.removeLayer(info.labelLayer);
+            }
+        });
+
+        reapplyLayerOrder(map);
+        updateStats();
+        UIManager.updateLegend();
+        // R108：同步图层行的 dataset-hidden 禁用态
+        if (typeof UIManager !== 'undefined' && UIManager.syncDatasetHiddenStates) UIManager.syncDatasetHiddenStates();
+    }
+
+    function toggleDatasetVisible(name) {
+        setDatasetVisible(name, datasetHidden.has(name));
+    }
+
+    // 遍历全部已加载数据集名（从图层 config.group 去重得到）
+    function eachDatasetName(callback) {
+        const names = new Set();
+        layers.forEach(info => { if (info.config && info.config.group) names.add(info.config.group); });
+        names.forEach(callback);
+    }
+
+    // 批量显示/隐藏所有数据集（不改动各图层个体显隐状态）——供面板底部「显示/隐藏所有数据集」使用
+    function showAllDatasets() {
+        eachDatasetName(name => setDatasetVisible(name, true));
+    }
+
+    function hideAllDatasets() {
+        eachDatasetName(name => setDatasetVisible(name, false));
     }
 
     // ---------- 移除图层 ----------
@@ -880,10 +1117,10 @@ const LayerManager = (function() {
         UIManager.updateLayerItem(previousId);
     }
 
-    // 高亮指定图层（覆盖式：先清除已有高亮；图层需可见）
+    // 高亮指定图层（覆盖式：先清除已有高亮；图层需可见且所在数据集未隐藏）
     function setLayerHighlight(id) {
         const info = layers.get(id);
-        if (!info || !info.visible) return false;
+        if (!info || !info.visible || isDatasetHidden(info.config.group || '未分组')) return false;
         clearLayerHighlight();
         highlightedId = id;
         highlightOverlay = buildHighlightOverlay(info);
@@ -907,8 +1144,10 @@ const LayerManager = (function() {
         const groups = new Set();
         let visibleCount = 0;
         layers.forEach(info => {
-            groups.add(info.config.group || '未分组');
-            if (info.visible) visibleCount += 1;
+            const group = info.config.group || '未分组';
+            groups.add(group);
+            // R87：数据集被隐藏时其图层不计入「可见图层」统计
+            if (info.visible && !datasetHidden.has(group)) visibleCount += 1;
         });
         const setStat = (id, value) => {
             const el = document.getElementById(id);
@@ -955,7 +1194,7 @@ const LayerManager = (function() {
         const map = MapManager.getMap();
         const wasVisible = info.labelsVisible && info.visible;
         if (wasVisible) map.removeLayer(info.labelLayer);
-        const result = createLabelLayer(info.data, info.styleConfig);
+        const result = createLabelLayer(info.data, info.styleConfig, getEffectiveLabelSettings(info._id));
         info.labelLayer = result.labelLayer;
         if (wasVisible) info.labelLayer.addTo(map);
     }
@@ -1059,15 +1298,183 @@ const LayerManager = (function() {
         return new Map([...layers].filter(([, info]) => (info.config.group || '未分组') === group));
     }
 
+    // ---------- R106：标注全局设置 ----------
+    // 返回所有已加载要素的属性字段并集（用于标注字段下拉）
+    function getLabelFields() {
+        const keys = new Set();
+        layers.forEach(info => {
+            const feats = (info.data && info.data.features) ? info.data.features : [];
+            feats.forEach(f => { Object.keys(f.properties || {}).forEach(k => keys.add(k)); });
+        });
+        return [...keys].sort();
+    }
+
+    // R109：返回单个图层自身包含的字段（用于每图层标注设置的下拉候选）
+    function getLayerFields(id) {
+        const info = layers.get(id);
+        if (!info || !info.data || !info.data.features) return [];
+        const keys = new Set();
+        info.data.features.forEach(f => { Object.keys(f.properties || {}).forEach(k => keys.add(k)); });
+        return [...keys].sort();
+    }
+
+    function getLabelSettings() {
+        return Object.assign({}, labelSettings);
+    }
+
+    // R108：获取指定图层的 effective 标注设置（全局默认值 + 该图层覆盖值）
+    function getLayerLabelSettings(id) {
+        const info = layers.get(id);
+        if (!info) return Object.assign({}, labelSettings);
+        return getEffectiveLabelSettings(id);
+    }
+
+    // R108：设置指定图层的标注外观覆盖（字段 / 文字色 / 扫边 / 字体 / 字号），不影响全局
+    function setLayerLabelSettings(id, patch) {
+        const info = layers.get(id);
+        if (!info || !patch) return;
+        let override = labelOverrides.get(id);
+        if (!override) { override = {}; labelOverrides.set(id, override); }
+        if ('field' in patch) override.field = patch.field;
+        if ('textColor' in patch) override.textColor = patch.textColor;
+        if ('haloColor' in patch) override.haloColor = patch.haloColor;
+        if ('haloWidth' in patch) override.haloWidth = patch.haloWidth;
+        if ('textOpacity' in patch) override.textOpacity = patch.textOpacity;
+        if ('haloOpacity' in patch) override.haloOpacity = patch.haloOpacity;
+        if ('fontFamily' in patch) override.fontFamily = patch.fontFamily;
+        if ('fontSize' in patch) override.fontSize = patch.fontSize;
+        // 清除空字符串，减少存储噪音
+        Object.keys(override).forEach(key => {
+            if (override[key] === '' || override[key] === null || override[key] === undefined) delete override[key];
+        });
+        if (Object.keys(override).length === 0) labelOverrides.delete(id);
+        persistLayerLabelOverrides();
+        rebuildLabels(info);
+    }
+
+    // R108：设置指定图层的标注运行时显隐（不写入 per-layer 持久化，由 UI 即时生效）
+    function setLayerLabelsVisible(id, on) {
+        const info = layers.get(id);
+        if (!info || !info.labelField) return;
+        const map = MapManager.getMap();
+        info.labelsVisible = !!on;
+        if (info.labelsVisible && info.visible && !isDatasetHidden(info.config.group || '未分组')) {
+            info.labelLayer.addTo(map);
+        } else {
+            map.removeLayer(info.labelLayer);
+        }
+        if (typeof UIManager !== 'undefined' && UIManager.updateLayerItem) UIManager.updateLayerItem(id);
+    }
+
+    // R108：切换整个数据集的标注显隐；target = 只要有一个图层显示就全部隐藏，否则全部显示
+    function toggleDatasetLabels(name) {
+        const groupLayers = getLayersByGroup(name);
+        if (groupLayers.size === 0) return;
+        const anyVisible = [...groupLayers.values()].some(info => info.labelsVisible);
+        const target = !anyVisible;
+        groupLayers.forEach(info => setLayerLabelsVisible(info._id, target));
+    }
+
+    // 应用标注设置（字段 / 文字色 / 扫边 / 字体）。
+    // patch.show 为 true/false 时同步所有图层的标注显隐；其余项仅重建标注外观。
+    function applyLabelSettings(patch) {
+        if (!patch || typeof patch !== 'object') return;
+        Object.assign(labelSettings, patch);
+        persistLabelSettings();
+        const map = MapManager.getMap();
+        layers.forEach(info => {
+            if ('show' in patch && patch.show !== null && patch.show !== undefined) {
+                info.labelsVisible = !!patch.show && !!info.visible;
+            }
+            rebuildLabels(info);
+        });
+    }
+
+    // R106：地点搜索点击后的「高亮 + 属性弹窗」——以要素真实几何绘制高亮描边并闪烁 3s，
+    // 同时弹出该要素的属性（与点击要素一致），而非在中心叠加一个独立点标记。
+    function flashFeature(feature, opts) {
+        opts = opts || {};
+        const map = MapManager.getMap();
+        if (!map || !feature) return null;
+        const duration = Number(opts.duration) || 3000;
+        const accent = '#4f6ef7';
+        const overlay = L.geoJSON(feature, {
+            style: {
+                color: accent,
+                weight: 3,
+                opacity: 1,
+                fillColor: accent,
+                fillOpacity: 0.22,
+                dashArray: '7 5',
+                className: 'place-flash-overlay',
+            },
+            pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+                radius: 9,
+                color: accent,
+                weight: 3,
+                fillColor: accent,
+                fillOpacity: 0.3,
+                className: 'place-flash-overlay',
+            }),
+        }).addTo(map);
+        try { overlay.bringToFront(); } catch (e) {}
+
+        const props = feature.properties || {};
+        const kind = getGeometryKind(feature.geometry);
+        const kindIcon = kind === 'point' ? 'fa-location-dot' : kind === 'line' ? 'fa-route' : 'fa-draw-polygon';
+        const title = opts.title || getFeatureLabel(feature, opts.labelField) || '要素详情';
+        const sub = opts.sub || '';
+        const rows = [];
+        const seen = new Set(['name', 'title']);
+        if (opts.labelField) seen.add(opts.labelField);
+        const pushRow = (k, v) => {
+            if (seen.has(k)) return;
+            seen.add(k);
+            if (v === null || v === undefined || String(v).trim() === '') return;
+            rows.push(`<div class="feature-popup-row"><span class="feature-popup-key">${escapeHtml(k)}</span><span class="feature-popup-val">${escapeHtml(v)}</span></div>`);
+        };
+        ['type', 'category', 'address', 'description', 'area', 'length'].forEach(k => pushRow(k, props[k]));
+        Object.entries(props).forEach(([k, v]) => pushRow(k, v));
+        const html =
+            `<div class="feature-popup">` +
+                `<div class="feature-popup-header"><span class="feature-popup-icon"><i class="fas ${kindIcon}"></i></span>` +
+                `<div class="feature-popup-heading"><div class="feature-popup-title">${escapeHtml(title)}</div>` +
+                (sub ? `<div class="feature-popup-sub">${escapeHtml(sub)}</div>` : '') +
+                `</div></div>` +
+                (rows.length ? `<div class="feature-popup-body">${rows.join('')}</div>` : '') +
+            `</div>`;
+        overlay.bindPopup(html, { direction: 'top', autoPan: true, autoPanPadding: [24, 24], closeButton: true, minWidth: 220, maxWidth: 300 }).openPopup();
+
+        const timer = setTimeout(() => { try { map.removeLayer(overlay); } catch (e) {} }, duration);
+        overlay.on('popupclose', () => { clearTimeout(timer); try { map.removeLayer(overlay); } catch (e) {} });
+        return { overlay, timer };
+    }
+
+    // R110：提供默认样式/标注的克隆，供「完成后应用」预览模式在「恢复默认」时还原（不直接改地图）
+    function getDefaultStyle(id) {
+        const info = layers.get(id);
+        if (!info) return null;
+        return Object.assign({}, defaultStyle(info.config));
+    }
+    function getDefaultLabelSettings() {
+        return Object.assign({}, defaultLabelSettings());
+    }
+
     return {
         loadLayer,
         loadDataset,
         removeDataset,
+        setLoadingListener,
         getLoadedGroupNames,
         setLayerOrder,
         setAllVisibility,
         toggleLayer,
         removeLayer,
+        isDatasetHidden,
+        setDatasetVisible,
+        toggleDatasetVisible,
+        showAllDatasets,
+        hideAllDatasets,
         zoomToLayer,
         toggleLabels,
         setLayerHighlight,
@@ -1085,7 +1492,18 @@ const LayerManager = (function() {
         hasCustomStyles,
         getAllLayers,
         getLayersByGroup,
+        getLabelFields,
+        getLayerFields,
+        getLabelSettings,
+        getLayerLabelSettings,
+        setLayerLabelSettings,
+        setLayerLabelsVisible,
+        applyLabelSettings,
+        toggleDatasetLabels,
+        flashFeature,
         filterLayers,
         updateStats,
+        getDefaultStyle,
+        getDefaultLabelSettings,
     };
 })();

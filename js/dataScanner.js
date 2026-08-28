@@ -99,7 +99,6 @@ const DataScanner = (function() {
             // 兼容旧引用：全部数据源平铺列表
             CONFIG.dataSources = datasets.reduce((all, dataset) => all.concat(dataset.sources), []);
 
-            console.log(`✅ 已解析 ${datasets.length} 个数据集 / ${CONFIG.dataSources.length} 个图层`);
             return datasets;
 
         } catch (error) {
