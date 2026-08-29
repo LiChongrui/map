@@ -13,12 +13,11 @@ const UIManager = (function() {
     // R110：预览模式下「待应用」工作副本——输入只更新预览，点击「完成」才写入地图
     let pendingStyle = null;
     let pendingLabel = null;
-    // 数据集菜单元素（portal 到 body 后 wrap.querySelector 找不到，须闭包持有引用）
-    let datasetMenuEl = null;
 
     // 已折叠的数据集分组（localStorage 持久化）
     const COLLAPSE_STORAGE_KEY = 'lyc_collapsed_groups_v1';
     const collapsedGroups = new Set(readCollapsedGroups());
+    let lastAddedGroup = null; // R143：「最新添加」的数据集（折叠逻辑只保留它展开）
 
     function readCollapsedGroups() {
         try {
@@ -35,7 +34,8 @@ const UIManager = (function() {
 
     const BUTTON_IDS = [
         'datasetVisToggle',
-        'zoomToAll'
+        'zoomToAll',
+        'footerRemoveAll'
     ];
 
     function init() {
@@ -71,7 +71,7 @@ const UIManager = (function() {
         if (!isMobile()) {
             try {
                 const savedW = parseInt(localStorage.getItem('lyc_sidebar_width'), 10);
-                if (savedW >= 260 && savedW <= 560) {
+                if (savedW >= 220 && savedW <= 560) {
                     document.documentElement.style.setProperty('--sidebar-width', savedW + 'px');
                 }
             } catch (error) { /* 存储不可用时使用默认宽度 */ }
@@ -80,12 +80,6 @@ const UIManager = (function() {
         updateButtonsState(false);
         applyPanelButtonState();
         initLabelSettings();
-
-        // R99：窗口大小变化时重新计算底图药丸位置，使其始终位于可见地图区域顶部中心
-        window.addEventListener('resize', () => {
-            if (MapManager.positionBasemapPill) MapManager.positionBasemapPill();
-        });
-        if (MapManager.positionBasemapPill) MapManager.positionBasemapPill();
     }
 
     // R90：数据集加载状态 →「加载中」遮罩（支持并发加载计数）
@@ -102,17 +96,6 @@ const UIManager = (function() {
         } else {
             el.hidden = true;
         }
-    }
-    function showLoading(text) {
-        const el = document.getElementById('globalLoading');
-        if (!el) return;
-        if (text) { const t = el.querySelector('.loading-text'); if (t) t.textContent = text; }
-        el.hidden = false;
-    }
-    function hideLoading() {
-        const el = document.getElementById('globalLoading');
-        if (el) el.hidden = true;
-        loadingCount = 0;
     }
 
     // R90：主题与底图联动——暗色→暗黑底图，亮色→冷色底图
@@ -162,251 +145,200 @@ const UIManager = (function() {
         return 'mixed';
     }
 
-    // ================================================================
-    // 添加数据集菜单：多选数据集，一键批量加载到图层列表
-    // ================================================================
 
-    function updateAddDatasetMenu() {
-        const wrap = document.getElementById('datasetAdd');
-        if (!wrap) return;
-        const menu = datasetMenuEl || wrap.querySelector('.dataset-select-menu');
-        if (!menu) return;
+    // ================================================================
+    // 图层面板视图（R127）：顶部 Tab 在「数据集 / 图层」两视图间切换
+    // 数据集视图：列出全部数据集（名称 + info 说明 + 图层构成 点/线/面），
+    //   每行一个「添加 / 已添加」切换；已加载行用主题蓝强调（左侧蓝条 + 蓝色实心 pill）。
+    // 图层视图：沿用既有分组图层列表（显隐眼睛等），逻辑不变。
+    // 添加 / 移除 / 添加全部 / 移除全部 逻辑与早期下拉菜单一致（默认加载行为不变）。
+    // ================================================================
+    let activePanelView = 'datasets';
 
+    // 渲染数据集视图（#datasetList）
+    function renderDatasetView() {
+        const list = document.getElementById('datasetList');
+        if (!list) return;
         const datasets = DataScanner.getDatasets();
         const loadedGroups = new Set(LayerManager.getLoadedGroupNames());
 
         if (datasets.length === 0) {
-            menu.innerHTML = '<div class="dataset-menu-empty"><i class="fas fa-database"></i>暂无可用数据集</div>';
+            list.innerHTML = '<div class="dataset-empty"><i class="fas fa-database"></i>暂无可用数据集</div>';
             return;
         }
 
-        // 已加载项：checkbox 默认勾选、可取消（取消 = 从地图移除）；未加载项：勾选 = 添加。
-        // 徽章：已加载 →「已加载」；取消勾选 →「待移除」；未加载勾选 →「待添加」
-        const options = datasets.map(dataset => {
+        list.innerHTML = datasets.map(dataset => {
             const loaded = loadedGroups.has(dataset.name);
             const safeName = escapeHtml(dataset.name);
-            return `<label class="dataset-select-option${loaded ? ' loaded' : ''}" data-value="${safeName}">
-                <input type="checkbox" ${loaded ? 'checked' : ''} />
-                <span class="dataset-option-name">${safeName}<em>${dataset.sources.length} 个图层</em></span>
-                <span class="dataset-option-badge" data-badge>${loaded ? '已加载' : ''}</span>
-            </label>`;
+            const info = dataset.info ? escapeHtml(dataset.info) : '暂无说明';
+            const layerCount = dataset.sources.length;
+            // 从 manifest style 推断各图层几何类型（未加载也能显示构成）
+            const counts = { point: 0, line: 0, polygon: 0 };
+            dataset.sources.forEach(src => {
+                const s = src.style || {};
+                if ('pointColor' in s) counts.point += 1;
+                else if ('lineColor' in s) counts.line += 1;
+                else if ('fillColor' in s) counts.polygon += 1;
+            });
+            let composition = `${layerCount} 图层`;
+            const parts = [];
+            if (counts.point) parts.push(`点 ${counts.point}`);
+            if (counts.line) parts.push(`线 ${counts.line}`);
+            if (counts.polygon) parts.push(`面 ${counts.polygon}`);
+            if (parts.length) composition += ` · ${parts.join(' · ')}`;
+            return `
+                <div class="dataset-row${loaded ? ' is-loaded' : ''}" data-name="${safeName}">
+                    <span class="dataset-row-icon"><i class="fas fa-database"></i></span>
+                    <div class="dataset-row-main">
+                        <div class="dataset-row-name">${safeName}</div>
+                        <div class="dataset-row-info">${info}</div>
+                        <div class="dataset-row-meta">${composition}</div>
+                    </div>
+                    <button type="button" class="ds-pill${loaded ? ' is-loaded' : ''}" data-action="${loaded ? 'remove' : 'add'}" data-tooltip="${loaded ? '从图层中移除' : '添加到图层'}" aria-label="${loaded ? '移除' : '添加'}${safeName}">
+                        ${loaded
+                            ? '<i class="fas fa-check"></i> 已添加'
+                            : '<i class="fas fa-plus"></i> 添加'}
+                    </button>
+                </div>`;
         }).join('');
 
-        menu.innerHTML = `
-            <div class="dataset-menu-head">
-                <div class="dataset-menu-title">管理数据集</div>
-                <div class="dataset-menu-desc">勾选 = 添加到地图；取消已加载项的勾选 = 从地图移除</div>
-            </div>
-            <div class="dataset-menu-search">
-                <i class="fas fa-search" aria-hidden="true"></i>
-                <input type="text" class="dataset-menu-search-input" placeholder="搜索数据集..." aria-label="搜索数据集" />
-            </div>
-            <div class="dataset-menu-body">${options}</div>
-            <div class="dataset-menu-footer">
-                <div class="dataset-menu-bulk">
-                    <button type="button" class="dataset-bulk-btn" data-bulk="add"><i class="fas fa-plus"></i> 添加全部</button>
-                    <button type="button" class="dataset-bulk-btn" data-bulk="remove"><i class="fas fa-minus"></i> 移除全部</button>
-                </div>
-                <div class="dataset-menu-footer-row">
-                    <span class="dataset-menu-count">未改动</span>
-                    <div class="dataset-menu-actions">
-                        <button type="button" class="dataset-cancel-btn">取消</button>
-                        <button type="button" class="dataset-apply-btn" disabled>应用</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // 数据集搜索（R63）：按名称实时过滤选项；无匹配时显示空态
-        const searchInput = menu.querySelector('.dataset-menu-search-input');
-        if (searchInput) {
-            searchInput.addEventListener('input', () => {
-                const kw = searchInput.value.trim().toLowerCase();
-                let visible = 0;
-                menu.querySelectorAll('.dataset-select-option').forEach(option => {
-                    const hit = !kw || (option.dataset.value || '').toLowerCase().includes(kw);
-                    option.style.display = hit ? '' : 'none';
-                    if (hit) visible += 1;
-                });
-                let empty = menu.querySelector('.dataset-menu-empty-filter');
-                if (visible === 0 && kw) {
-                    if (!empty) {
-                        empty = document.createElement('div');
-                        empty.className = 'dataset-menu-empty dataset-menu-empty-filter';
-                        empty.innerHTML = '<i class="fas fa-database"></i>未找到匹配的数据集';
-                        menu.querySelector('.dataset-menu-body').appendChild(empty);
-                    }
-                    empty.style.display = '';
-                } else if (empty) {
-                    empty.style.display = 'none';
+        // 绑定每行添加 / 移除
+        list.querySelectorAll('.dataset-row').forEach(row => {
+            const btn = row.querySelector('.ds-pill');
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                const name = row.dataset.name;
+                if (btn.dataset.action === 'add') {
+                    await addDatasets([name]);
+                    renderDatasetView();
+                    if (activePanelView === 'layers') updateLayerPanel();
+                } else {
+                    LayerManager.removeDataset(name);
+                    showToast(`已移除「${name}」`, 'info');
+                    renderDatasetView();
+                    if (activePanelView === 'layers') updateLayerPanel();
                 }
             });
-        }
-
-        // 选项点击：label 默认行为自动 toggle checkbox，change 事件同步勾选态、徽章与底部计数；
-        // 注意：不要再手动改 input.checked——label 会再派发一次 click 导致双重 toggle
-        menu.querySelectorAll('.dataset-select-option').forEach(option => {
-            const input = option.querySelector('input');
-            if (input) {
-                input.addEventListener('change', () => {
-                    option.classList.toggle('selected', input.checked);
-                    updateOptionBadge(option, input.checked);
-                    updateOptionStateClass(option, input.checked);
-                    updateDatasetMenuState(menu);
-                });
-            }
         });
-
-        // 取消：关闭菜单
-        menu.querySelector('.dataset-cancel-btn').addEventListener('click', () => {
-            closeAddDatasetMenu(wrap);
-        });
-
-        // 应用：添加勾选的未加载数据集 + 移除取消勾选的已加载数据集
-        menu.querySelector('.dataset-apply-btn').addEventListener('click', async () => {
-            const toAdd = [...menu.querySelectorAll('.dataset-select-option:not(.loaded)')]
-                .filter(option => option.querySelector('input').checked)
-                .map(option => option.dataset.value);
-            const toRemove = [...menu.querySelectorAll('.dataset-select-option.loaded')]
-                .filter(option => !option.querySelector('input').checked)
-                .map(option => option.dataset.value);
-            if (toAdd.length === 0 && toRemove.length === 0) return;
-            if (toRemove.length > 0) {
-                const ok = await showAppModal({
-                    icon: 'fa-trash-can',
-                    title: '移除数据集',
-                    message: `将从地图移除：${toRemove.join('、')}\n其图层将从地图与列表中移除，可随时重新添加。`,
-                    confirmText: '移除',
-                    danger: true,
-                });
-                if (!ok) return;
-            }
-            closeAddDatasetMenu(wrap);
-            if (toAdd.length > 0) await addDatasets(toAdd);
-            toRemove.forEach(name => LayerManager.removeDataset(name));
-            if (toRemove.length > 0) showToast(`已移除 ${toRemove.length} 个数据集`, 'info');
-        });
-        // R110：添加全部 / 移除全部——批量勾选后同步徽章与底部计数
-        menu.querySelectorAll('.dataset-bulk-btn').forEach(bulkBtn => {
-            bulkBtn.addEventListener('click', () => {
-                const mode = bulkBtn.dataset.bulk;
-                menu.querySelectorAll('.dataset-select-option').forEach(option => {
-                    const input = option.querySelector('input');
-                    if (!input) return;
-                    input.checked = (mode === 'add');
-                    option.classList.toggle('selected', input.checked);
-                    updateOptionBadge(option, input.checked);
-                    updateOptionStateClass(option, input.checked);
-                });
-                updateDatasetMenuState(menu);
-            });
-        });
+        // 数据集视图统计随添加 / 移除实时刷新
+        updatePanelStats();
+        // R141：添加/移除后保留当前搜索过滤——重新渲染列表后立刻按既有 searchKeyword 重新套用过滤（输入框文本不丢失）
+        applyPanelSearch();
     }
 
-    // R71：option 级状态 class——pending-add（未加载勾选）/ pending-remove（已加载取消勾选），
-    // 用于 checkbox accent-color 三态分组配色（已加载=暖金棕 / 待添加=杏赭石 / 待移除=珊瑚红）
-    function updateOptionStateClass(option, checked) {
-        option.classList.toggle('pending-add', !option.classList.contains('loaded') && checked);
-        option.classList.toggle('pending-remove', option.classList.contains('loaded') && !checked);
-    }
-
-    // 选项徽章状态：未加载勾选 →「待添加」；已加载取消勾选 →「待移除」；其余恢复默认
-    function updateOptionBadge(option, checked) {
-        const badge = option.querySelector('[data-badge]');
-        if (!badge) return;
-        const loaded = option.classList.contains('loaded');
-        if (!loaded && checked) {
-            badge.textContent = '待添加';
-            badge.classList.add('pending-add');
-            badge.classList.remove('pending-remove');
-            badge.hidden = false;
-        } else if (loaded && !checked) {
-            badge.textContent = '待移除';
-            badge.classList.add('pending-remove');
-            badge.classList.remove('pending-add');
-            badge.hidden = false;
+    // 视图感知统计条：数据集视图显示「数据集总量 / 已加载」，图层视图显示「已加载数据集 / 图层总量 / 可见」
+    function updatePanelStats() {
+        const el = document.getElementById('panelStats');
+        if (!el) return;
+        if (activePanelView === 'datasets') {
+            const total = DataScanner.getDatasets().length;
+            const loaded = LayerManager.getLoadedGroupNames().length;
+            el.innerHTML =
+                `<span class="stat"><span class="stat-num">${total}</span><span class="stat-label">数据集</span></span>` +
+                `<span class="stat-sep">·</span>` +
+                `<span class="stat"><span class="stat-num">${loaded}</span><span class="stat-label">已加载</span></span>`;
         } else {
-            badge.textContent = loaded ? '已加载' : '';
-            badge.classList.remove('pending-add', 'pending-remove');
-            badge.hidden = loaded ? false : true;
+            const all = getCurrentLayers();
+            const loadedDatasets = new Set([...all.values()].map(i => i.config.group)).size;
+            const totalLayers = all.size;
+            const visible = [...all.values()].filter(info => info.visible && !LayerManager.isDatasetHidden(info.config.group)).length;
+            el.innerHTML =
+                `<span class="stat"><span class="stat-num">${loadedDatasets}</span><span class="stat-label">数据集</span></span>` +
+                `<span class="stat-sep">·</span>` +
+                `<span class="stat"><span class="stat-num">${totalLayers}</span><span class="stat-label">图层</span></span>` +
+                `<span class="stat-sep">·</span>` +
+                `<span class="stat"><span class="stat-num">${visible}</span><span class="stat-label">可见</span></span>`;
         }
     }
 
-    // 菜单底部：添加/移除计数 + 「应用」按钮可用态
-    function updateDatasetMenuState(menu) {
-        const addCount = [...menu.querySelectorAll('.dataset-select-option:not(.loaded)')]
-            .filter(option => option.querySelector('input').checked).length;
-        const removeCount = [...menu.querySelectorAll('.dataset-select-option.loaded')]
-            .filter(option => !option.querySelector('input').checked).length;
-        const count = menu.querySelector('.dataset-menu-count');
-        const apply = menu.querySelector('.dataset-apply-btn');
-        if (count) {
-            if (addCount === 0 && removeCount === 0) count.textContent = '未改动';
-            else if (removeCount === 0) count.textContent = `添加 ${addCount} 个`;
-            else if (addCount === 0) count.textContent = `移除 ${removeCount} 个`;
-            else count.textContent = `添加 ${addCount} 个 · 移除 ${removeCount} 个`;
+    // 切换面板视图（datasets / layers）
+    function setActivePanelView(view) {
+        activePanelView = view;
+        const tabs = document.querySelectorAll('.panel-tab');
+        tabs.forEach(tab => {
+            const on = tab.dataset.view === view;
+            tab.classList.toggle('is-active', on);
+            tab.setAttribute('aria-selected', String(on));
+        });
+        const datasetView = document.getElementById('datasetView');
+        const layerView = document.getElementById('layerView');
+        if (datasetView) datasetView.hidden = (view !== 'datasets');
+        if (layerView) layerView.hidden = (view !== 'layers');
+        const groupActions = document.getElementById('groupToggleActions');
+        if (groupActions) groupActions.hidden = (view !== 'layers');
+
+        // 工具栏右侧批量按钮：仅数据集视图显示「添加全部 / 移除全部」
+        const bulkActions = document.getElementById('datasetBulkActions');
+        if (bulkActions) bulkActions.hidden = (view !== 'datasets');
+
+        // 底部「隐藏/显示所有数据集 + 缩放至全部可见图层」在两个视图均显示（数据集/图层标签都适用）
+        // R141：底部「移除全部数据集」仅图层视图显示（数据集视图已有工具栏「移除全部」）
+        const footerRemoveAll = document.getElementById('footerRemoveAll');
+        if (footerRemoveAll) footerRemoveAll.hidden = (view !== 'layers');
+
+        const searchInput = document.getElementById('layerSearch');
+        if (searchInput) {
+            searchInput.placeholder = view === 'datasets' ? '搜索数据集...' : '搜索图层...';
         }
-        if (apply) apply.disabled = addCount === 0 && removeCount === 0;
+        if (view === 'datasets') renderDatasetView();
+        applyPanelSearch();
+        // 切到图层视图时同步底部按钮（隐藏/缩放）的可用态与图标
+        updateButtonsState();
+        // 视图切换后刷新统计条（数据集 / 图层 各自统计）
+        updatePanelStats();
     }
 
-    function closeAddDatasetMenu(wrap) {
-        wrap.classList.remove('open');
-        const menu = datasetMenuEl || wrap.querySelector('.dataset-select-menu');
-        if (menu) {
-            menu.classList.remove('open');
-            // 菜单移回 wrap：面板重建/下次打开时始终能按 wrap 内查找
-            if (menu.parentElement !== wrap) wrap.appendChild(menu);
-        }
-        wrap.querySelector('.dataset-add-btn')?.setAttribute('aria-expanded', 'false');
+    // 批量：添加全部 / 移除全部
+    async function datasetAddAll() {
+        const all = DataScanner.getDatasets().map(d => d.name);
+        const loaded = new Set(LayerManager.getLoadedGroupNames());
+        const toAdd = all.filter(n => !loaded.has(n));
+        if (toAdd.length === 0) { showToast('所有数据集已添加', 'info'); return; }
+        await addDatasets(toAdd);
+        renderDatasetView();
+        if (activePanelView === 'layers') updateLayerPanel();
     }
 
-    // 数据集菜单定位（fixed，菜单已在 body）：默认在按钮右下方展开，并确保整块落在
-    // 侧边栏右侧的地图区域（left ≥ 侧边栏宽度 + 8），避免被 z-index 更高的侧边栏遮挡/拦截点击；
-    // 底部空间不足时压缩菜单高度（内部 body 滚动）
-    function positionDatasetMenu(menu) {
-        const wrap = document.getElementById('datasetAdd');
-        if (!wrap || !menu) return;
-        const btn = wrap.querySelector('.dataset-add-btn');
-        if (!btn) return;
-        const rect = btn.getBoundingClientRect();
-        const mw = menu.offsetWidth || 292;
-        const sidebar = document.getElementById('sidebar');
-        const sidebarW = (sidebar && sidebar.offsetWidth) || 320;
-        // 优先右对齐按钮；但至少让菜单整体避开侧边栏（否则即便提高 z-index 也会压住面板内容）
-        let left = Math.max(rect.right - mw, sidebarW + 8);
-        left = Math.min(left, window.innerWidth - mw - 8);
-        left = Math.max(8, left);
-        let top = rect.bottom + 8;
-        menu.style.left = `${Math.round(left)}px`;
-        menu.style.top = `${Math.round(top)}px`;
-        // 底部放不下时优先压缩菜单自身高度（body 区内部滚动），压到极限仍不够再向上翻
-        const avail = window.innerHeight - top - 8;
-        if (avail < 160) {
-            menu.style.maxHeight = '';
-            const mh = menu.offsetHeight;
-            top = Math.max(8, rect.top - mh - 8);
-            menu.style.top = `${Math.round(top)}px`;
-            menu.style.maxHeight = `${Math.min(mh, window.innerHeight - top - 8)}px`;
-        } else {
-            menu.style.maxHeight = `${Math.round(avail)}px`;
-        }
+    async function datasetRemoveAll() {
+        const loaded = LayerManager.getLoadedGroupNames();
+        if (loaded.length === 0) { showToast('当前没有已添加的数据集', 'info'); return; }
+        const ok = await showAppModal({
+            icon: 'fa-trash-can',
+            title: '移除全部数据集',
+            message: `将从地图移除全部 ${loaded.length} 个已添加数据集，其图层将从地图与列表中移除，可随时重新添加。`,
+            confirmText: '移除全部',
+            danger: true,
+        });
+        if (!ok) return;
+        loaded.forEach(name => LayerManager.removeDataset(name));
+        showToast(`已移除 ${loaded.length} 个数据集`, 'info');
+        renderDatasetView();
+        if (activePanelView === 'layers') updateLayerPanel();
     }
 
-    // 批量加载数据集：依次加载，汇总成功/失败；全部加载后缩放到整体范围
-    // R75：添加数据集后，分组数量超过 6 个时自动折叠（保持最后一个数据集展开），避免面板拥挤
+    // 批量加载数据集：并行加载、汇总成功/失败、统一重排一次；全部加载后缩放到整体范围
+    // R143：新加载数据集默认展开；分组 > 6 时仅展开「最新添加」的数据集，其余折叠
     function autoCollapseGroupsIfMany() {
-        const groups = document.querySelectorAll('#layerList .layer-group');
-        if (groups.length <= 6) return;
-        const lastGroup = groups[groups.length - 1];
+        const groups = LayerManager.getLoadedGroupNames();
         collapsedGroups.clear();
-        groups.forEach(groupEl => {
-            const isLast = groupEl === lastGroup;
-            groupEl.classList.toggle('collapsed', !isLast);
-            const collapseBtn = groupEl.querySelector('.layer-group-collapse');
-            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', String(isLast));
-            if (!isLast) collapsedGroups.add(groupEl.dataset.group);
-        });
+        if (groups.length > 6) {
+            // 仅保留「最新添加」的数据集展开，其余折叠
+            const keep = groups.includes(lastAddedGroup) ? lastAddedGroup : groups[groups.length - 1];
+            groups.forEach(name => { if (name !== keep) collapsedGroups.add(name); });
+        }
+        // ≤6：全部展开（collapsedGroups 已清空）；>6：除最新添加外均折叠
         persistCollapsedGroups();
+        applyCollapseToDom();
+    }
+
+    // 按 collapsedGroups 把折叠状态同步到 DOM（折叠类 + aria + 分组按钮态）
+    function applyCollapseToDom() {
+        document.querySelectorAll('#layerList .layer-group').forEach(groupEl => {
+            const collapsed = collapsedGroups.has(groupEl.dataset.group);
+            groupEl.classList.toggle('collapsed', collapsed);
+            const collapseBtn = groupEl.querySelector('.layer-group-collapse');
+            if (collapseBtn) collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+        });
         updateGroupButtonsState();
     }
 
@@ -416,26 +348,43 @@ const UIManager = (function() {
         let hasValid = false;
         let loaded = 0;
         const failedNames = [];
-        for (const name of names) {
-            const result = await LayerManager.loadDataset(name);
-            if (result.loaded > 0) {
-                loaded += 1;
-                LayerManager.getLayersByGroup(name).forEach(info => {
-                    if (info.visible && info.layer.getBounds().isValid()) {
-                        bounds.extend(info.layer.getBounds());
-                        hasValid = true;
-                    }
-                });
+        // 批量添加：统一显示一次加载遮罩（避免逐个数据集闪烁），并行加载全部数据集
+        const label = names.length > 1 ? `正在添加 ${names.length} 个数据集` : (names[0] || '');
+        LayerManager.setLoading(true, label);
+        try {
+            // 并行加载（defer：暂不重排/刷新 UI），最后统一重排一次，顺序语义与逐个添加完全一致
+            const results = await Promise.all(names.map(name => LayerManager.loadDataset(name, { defer: true })));
+            const newIds = [];
+            results.forEach((result, i) => {
+                const name = names[i];
+                if (result.ids) newIds.push(...result.ids);
+                if (result.loaded > 0) {
+                    loaded += 1;
+                    LayerManager.getLayersByGroup(name).forEach(info => {
+                        if (info.visible && info.layer.getBounds && info.layer.getBounds().isValid()) {
+                            bounds.extend(info.layer.getBounds());
+                            hasValid = true;
+                        }
+                    });
+                }
+                if (result.failed > 0) failedNames.push(name);
+            });
+            // 新添加的数据集默认置于顶部：批量加载完成后统一置顶一次（内部按清单顺序稳定排列）
+            if (newIds.length) LayerManager.prependNewLayersOnTop(newIds);
+            // 统一重排图层顺序 + 地图叠加次序 + 刷新 UI（仅一次，替代每个数据集重复全量重排）
+            LayerManager.finalizeBatchLoad();
+            if (hasValid) MapManager.fitBounds(bounds);
+            // 记录「最新添加」的数据集，供折叠逻辑只保留它展开（需在 finalize 之后）
+            lastAddedGroup = names[names.length - 1];
+            if (loaded > 0) {
+                showToast(`已加载 ${loaded} 个数据集`, 'success');
+                // R143：分组 > 6 仅展开最新添加的数据集；≤ 6 全部展开
+                autoCollapseGroupsIfMany();
             }
-            if (result.failed > 0) failedNames.push(name);
+            if (failedNames.length > 0) showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
+        } finally {
+            LayerManager.setLoading(false, label);
         }
-        if (hasValid) MapManager.fitBounds(bounds);
-        if (loaded > 0) {
-            showToast(`已加载 ${loaded} 个数据集`, 'success');
-            // R75：分组超过 6 个自动折叠，保持最后一个数据集展开
-            autoCollapseGroupsIfMany();
-        }
-        if (failedNames.length > 0) showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
     }
 
     function initTooltips() {
@@ -525,7 +474,7 @@ const UIManager = (function() {
                 delay: 200,
                 delayOnTouchOnly: true,
                 touchStartThreshold: 5,
-                filter: '.vis-btn, .layer-swatch, .zoom-btn, .download-btn, .label-btn, .layer-actions',
+                filter: '.vis-btn, .layer-swatch, .zoom-btn, .label-btn, .layer-actions',
                 preventOnFilter: false,
                 // 拖拽期间容器加 sorting-active：图层行 transition 全部归零，
                 // 避免 .layer-item 的 transition: all 与 Sortable 让位动画叠加造成卡顿（流畅度核心）
@@ -604,6 +553,8 @@ const UIManager = (function() {
         // 分组头 显示/隐藏/缩放 按钮可用态随图层可见性变化同步
         updateGroupButtonsState();
         syncGroupVisButtons();
+        // 图层显隐 / 数据集显隐 变化后，统计条的「可见」数量需同步刷新
+        updatePanelStats();
     }
 
     // 同步所有分组头 显示/隐藏/缩放 按钮可用态（批量显隐/单图层切换后由 updateButtonsState 调用）
@@ -645,8 +596,6 @@ const UIManager = (function() {
         // 全局 Escape：关闭各类浮层菜单（数据集 / 底图 / 分组更多 / 图层更多），与弹窗自身 Escape 互不冲突
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
-                const datasetAdd = document.getElementById('datasetAdd');
-                if (datasetAdd) closeAddDatasetMenu(datasetAdd);
                 closeAllMapToolMenus();
                 closeAllGroupMoreMenus();
                 closeAllLayerMoreMenus();
@@ -654,46 +603,22 @@ const UIManager = (function() {
         });
 
 
-        const datasetAdd = document.getElementById('datasetAdd');
-        if (datasetAdd) {
-            datasetMenuEl = datasetAdd.querySelector('.dataset-select-menu');
-            datasetAdd.querySelector('.dataset-add-btn').addEventListener('click', function(event) {
-                event.stopPropagation();
-                const menu = datasetMenuEl;
-                if (!menu) return;
-                const wasOpen = menu.classList.contains('open');
-                closeAddDatasetMenu(datasetAdd);
-                if (wasOpen) return; // toggle：再次点击关闭
-                // portal：菜单移入 body，避免面板 backdrop-filter 劫持 fixed 定位基准 / max-height 裁剪
-                if (menu.parentElement !== document.body) {
-                    document.body.appendChild(menu);
-                }
-                // 每次打开重渲染菜单，重置勾选状态（已加载项仍显示已加载）
-                updateAddDatasetMenu();
-                menu.classList.add('open');
-                datasetAdd.classList.add('open');
-                this.setAttribute('aria-expanded', 'true');
-                positionDatasetMenu(menu);
-            });
-            document.addEventListener('click', event => {
-                const menu = datasetMenuEl;
-                if (!datasetAdd.contains(event.target) && !(menu && menu.contains(event.target))) {
-                    closeAddDatasetMenu(datasetAdd);
-                }
-            });
-        }
-        // 「关于作者」按钮（导航栏右侧，独立入口）：打开作者信息弹窗（R56）
-        // R86：关于入口融合在面板底部（#aboutFooter），点击/回车打开作者弹窗
-        const aboutFooter = document.getElementById('aboutFooter');
-        if (aboutFooter) {
-            aboutFooter.addEventListener('click', showAuthorModal);
-            aboutFooter.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    showAuthorModal();
-                }
-            });
-        }
+        // R127：面板视图 Tab 切换 + 数据集视图批量按钮
+        document.querySelectorAll('.panel-tab').forEach(tab => {
+            tab.addEventListener('click', () => setActivePanelView(tab.dataset.view));
+        });
+        const datasetAddAllBtn = document.getElementById('datasetAddAll');
+        if (datasetAddAllBtn) datasetAddAllBtn.addEventListener('click', datasetAddAll);
+        const datasetRemoveAllBtn = document.getElementById('datasetRemoveAll');
+        if (datasetRemoveAllBtn) datasetRemoveAllBtn.addEventListener('click', datasetRemoveAll);
+        // R141：图层视图底部「移除全部数据集」复用同一确认流程
+        const footerRemoveAll = document.getElementById('footerRemoveAll');
+        if (footerRemoveAll) footerRemoveAll.addEventListener('click', datasetRemoveAll);
+        // 初次渲染：默认数据集视图
+        setActivePanelView(activePanelView);
+        // R124：面板底部「关于项目 / 关于作者」两个独立入口
+        const aboutAuthorBtn = document.getElementById('aboutAuthorBtn');
+        if (aboutAuthorBtn) aboutAuthorBtn.addEventListener('click', showAuthorModal);
 
         const themeBtn = document.getElementById('toggleTheme');
         if (themeBtn) {
@@ -1345,7 +1270,7 @@ const UIManager = (function() {
                         <span>${safeName}</span>
                     </div>
                     <div class="layer-meta">
-                        <span class="meta-count"><i class="fas ${geometry.icon}"></i> ${featureCount} 个要素</span>
+                        <span class="meta-count"><i class="fas ${geometry.icon}"></i> ${featureCount} 要素</span>
                     </div>
                 </div>
                 <div class="layer-actions">
@@ -1437,14 +1362,43 @@ const UIManager = (function() {
     }
 
     // 应用搜索过滤：分组感知 + 搜索时强制展开折叠分组 + 无结果提示
-    function applySearchFilter() {
+    // 视图感知的搜索过滤：数据集视图过滤数据集行；图层视图沿用原有图层过滤
+    function applyPanelSearch() {
+        const kw = (searchKeyword || '').toLowerCase();
+        if (activePanelView === 'datasets') {
+            const list = document.getElementById('datasetList');
+            if (!list) return;
+            const rows = list.querySelectorAll('.dataset-row');
+            let visible = 0;
+            rows.forEach(row => {
+                const name = (row.dataset.name || '').toLowerCase();
+                const info = (row.querySelector('.dataset-row-info')?.textContent || '').toLowerCase();
+                const hit = !kw || name.includes(kw) || info.includes(kw);
+                row.style.display = hit ? '' : 'none';
+                if (hit) visible += 1;
+            });
+            let note = list.querySelector('.dataset-empty-filter');
+            if (kw && visible === 0) {
+                if (!note) {
+                    note = document.createElement('div');
+                    note.className = 'dataset-empty dataset-empty-filter';
+                    note.innerHTML = '<i class="fas fa-search"></i>未找到匹配的数据集';
+                    list.appendChild(note);
+                }
+                note.style.display = '';
+            } else if (note) {
+                note.style.display = 'none';
+            }
+            return;
+        }
+        // 图层视图：原逻辑
         const container = document.getElementById('layerList');
         if (!container) return;
-        container.classList.toggle('searching', !!searchKeyword);
-        const matched = LayerManager.filterLayers(searchKeyword);
+        container.classList.toggle('searching', !!kw);
+        const matched = LayerManager.filterLayers(kw);
 
         let note = container.querySelector('.filter-empty');
-        if (searchKeyword && matched === 0) {
+        if (kw && matched === 0) {
             if (!note) {
                 note = document.createElement('div');
                 note.className = 'filter-empty';
@@ -1454,6 +1408,11 @@ const UIManager = (function() {
         } else if (note) {
             note.remove();
         }
+    }
+
+    // 兼容旧调用：搜索过滤统一走视图感知版本
+    function applySearchFilter() {
+        applyPanelSearch();
     }
 
     // 折叠/展开数据集分组（持久化）
@@ -1639,7 +1598,11 @@ const UIManager = (function() {
         const container = document.getElementById('layerList');
         if (!container) return;
 
-        updateAddDatasetMenu();
+        // R127：数据加载/图层变更后同步数据集视图（添加全部/移除全部、默认加载等均依赖此刷新）
+        if (activePanelView === 'datasets') renderDatasetView();
+        // 图层/数据集统计随图层变更实时刷新（含空态）
+        updatePanelStats();
+
         const allLayers = getCurrentLayers();
 
         const hasData = allLayers.size > 0;
@@ -1650,7 +1613,7 @@ const UIManager = (function() {
                 <div class="empty-state">
                     <i class="fas fa-database empty-icon"></i>
                     <div class="empty-title">尚未添加数据集</div>
-                    <div class="empty-desc">点击上方「添加数据集」把数据加载到地图</div>
+                    <div class="empty-desc">切换到「数据集」标签，点「+」添加全部数据集到图层，或逐条添加所需数据集</div>
                 </div>
             `;
             return;
@@ -2017,7 +1980,6 @@ const UIManager = (function() {
                 sidebar.removeEventListener('transitionend', refresh);
                 MapManager.invalidateSize();
                 if (MapManager.repositionBottomHud) MapManager.repositionBottomHud();
-                if (MapManager.positionBasemapPill) MapManager.positionBasemapPill();
             };
             sidebar.addEventListener('transitionend', refresh);
             setTimeout(refresh, 360); // 兜底：过渡被禁用（reduced-motion）或无 transitionend 时仍校准
@@ -2052,9 +2014,8 @@ const UIManager = (function() {
         resizer.addEventListener('pointermove', (e) => {
             if (!dragging) return;
             let newW = startW + (e.clientX - startX);
-            newW = Math.max(260, Math.min(newW, 560));
+            newW = Math.max(220, Math.min(newW, 560));
             document.documentElement.style.setProperty('--sidebar-width', newW + 'px');
-            if (MapManager.positionBasemapPill) MapManager.positionBasemapPill();
         });
 
         const endDrag = (e) => {
@@ -2066,7 +2027,6 @@ const UIManager = (function() {
             try { localStorage.setItem('lyc_sidebar_width', String(w)); } catch (_) {}
             if (MapManager.invalidateSize) MapManager.invalidateSize();
             if (MapManager.repositionBottomHud) MapManager.repositionBottomHud();
-            if (MapManager.positionBasemapPill) MapManager.positionBasemapPill();
         };
         resizer.addEventListener('pointerup', endDrag);
         resizer.addEventListener('pointercancel', endDrag);
@@ -2562,7 +2522,7 @@ const UIManager = (function() {
         if (!modal || !body) return;
         const geometry = getGeometrySummary(info.data);
         title.textContent = info.config.name;
-        if (sub) sub.textContent = `${geometry.label}图层 · ${info.featureCount} 个要素`;
+        if (sub) sub.textContent = `${geometry.label}图层 · ${info.featureCount} 要素`;
         const iconEl = modal.querySelector('.style-modal-icon i');
         if (iconEl) iconEl.className = `fas ${geometry.icon}`;
         pendingStyle = Object.assign({}, LayerManager.getLayerStyle(id));
@@ -2599,9 +2559,8 @@ const UIManager = (function() {
     // 调整标注字段、文字颜色、扫边（描边）颜色/宽度、字体/字号、以及显隐。
     function buildLabelSettingsForm(settings, opts) {
         opts = opts || {};
-        const perLayer = !!opts.perLayer;
-        // R109：单图层模式下列出「该图层包含的字段」+ 自动；全局模式列出全部图层字段
-        const fields = (perLayer && opts.layerId) ? LayerManager.getLayerFields(opts.layerId) : LayerManager.getLabelFields();
+        // 标注字段候选：仅列出该图层自身包含的字段（+ 自动）
+        const fields = LayerManager.getLayerFields(opts.layerId);
         const fieldOpts = [{ value: '', text: '自动（每图层默认字段）' }]
             .concat(fields.map(f => ({ value: f, text: f })));
         const fontOpts = [
@@ -2614,14 +2573,13 @@ const UIManager = (function() {
             { value: 'serif', text: '衬线 Serif' },
             { value: 'monospace', text: '等宽 Mono' },
         ];
-        const fontSel = fontOpts; // 供 customSelectHTML 使用（见下方 HTML）
         const fontSize = settings.fontSize || 12;
         const haloWidth = (settings.haloWidth === '' || settings.haloWidth == null) ? 2 : settings.haloWidth;
         const textOpacity = (settings.textOpacity === '' || settings.textOpacity == null) ? 1 : Number(settings.textOpacity);
         const haloOpacity = (settings.haloOpacity === '' || settings.haloOpacity == null) ? 1 : Number(settings.haloOpacity);
         const textOpacityPct = Math.round(textOpacity * 100);
         const haloOpacityPct = Math.round(haloOpacity * 100);
-        const showChecked = perLayer ? !!opts.show : settings.show === true;
+        const showChecked = !!opts.show;
         // R109/R110：统一文案为「显示标注」（去掉冗余前缀与后面的显示/隐藏动态文本）
         const showLabel = '显示标注';
         const labelPreview = `
@@ -2699,23 +2657,6 @@ const UIManager = (function() {
                 </div>
             </div>
         `;
-    }
-
-    function openLabelSettings() {
-        labelPanelLayerId = null;
-        labelLegendColor = '#334155'; // 全局：无单一图层图例，使用中性默认（地图端仍按各图层图例色）
-        const modal = document.getElementById('labelSettingsModal');
-        const body = document.getElementById('labelSettingsBody');
-        const title = document.getElementById('labelSettingsTitle');
-        const sub = document.getElementById('labelSettingsSub');
-        if (!modal || !body) return;
-        if (title) title.textContent = '标注设置';
-        if (sub) sub.textContent = '调整标注字段、文字颜色、扫边与字体';
-        pendingLabel = Object.assign({}, LayerManager.getLabelSettings());
-        body.innerHTML = buildLabelSettingsForm(pendingLabel);
-        bindLabelSettingsInputs(body);
-        modal.hidden = false;
-        document.body.classList.add('modal-open');
     }
 
     // R108：打开指定图层的 per-layer 标注设置
@@ -2882,10 +2823,11 @@ const UIManager = (function() {
         }
         const closeBtn = document.getElementById('labelSettingsClose');
         if (closeBtn) closeBtn.addEventListener('click', closeLabelSettings);
-        // R110：点击「完成」才将预览中的标注设置写入地图（全局 / per-layer）
+        // R110：点击「完成」才将预览中的标注设置写入该图层
         const doneBtn = document.getElementById('labelSettingsDone');
         if (doneBtn) doneBtn.addEventListener('click', function() {
-            if (labelPanelLayerId && pendingLabel) {
+            // 面板只能由 openLabelPanel 打开，此时 labelPanelLayerId 必然已设置
+            if (pendingLabel) {
                 const id = labelPanelLayerId;
                 LayerManager.setLayerLabelSettings(id, {
                     field: pendingLabel.field, textColor: pendingLabel.textColor,
@@ -2894,8 +2836,6 @@ const UIManager = (function() {
                     fontFamily: pendingLabel.fontFamily, fontSize: pendingLabel.fontSize,
                 });
                 LayerManager.setLayerLabelsVisible(id, pendingLabel.show);
-            } else if (pendingLabel) {
-                LayerManager.applyLabelSettings(Object.assign({}, pendingLabel));
             }
             closeLabelSettings();
         });
@@ -2903,15 +2843,10 @@ const UIManager = (function() {
         const resetBtn = document.getElementById('labelSettingsReset');
         if (resetBtn) resetBtn.addEventListener('click', function() {
             const body = document.getElementById('labelSettingsBody');
-            if (labelPanelLayerId) {
-                const info = LayerManager.getLayerInfo(labelPanelLayerId);
-                pendingLabel = Object.assign({}, LayerManager.getDefaultLabelSettings());
-                pendingLabel.show = info ? info.labelsVisible : true;
-                if (body) { body.innerHTML = buildLabelSettingsForm(pendingLabel, { perLayer: true, layerId: labelPanelLayerId, show: pendingLabel.show }); bindLabelSettingsInputs(body); }
-            } else {
-                pendingLabel = Object.assign({}, LayerManager.getDefaultLabelSettings());
-                if (body) { body.innerHTML = buildLabelSettingsForm(pendingLabel); bindLabelSettingsInputs(body); }
-            }
+            const info = LayerManager.getLayerInfo(labelPanelLayerId);
+            pendingLabel = Object.assign({}, LayerManager.getDefaultLabelSettings());
+            pendingLabel.show = info ? info.labelsVisible : true;
+            if (body) { body.innerHTML = buildLabelSettingsForm(pendingLabel, { perLayer: true, layerId: labelPanelLayerId, show: pendingLabel.show }); bindLabelSettingsInputs(body); }
         });
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && !modal.hidden) closeLabelSettings();
@@ -2947,10 +2882,8 @@ const UIManager = (function() {
         // nowrap 时弹窗宽度按内容自适应（一行显示，不折行）
         if (card) card.classList.toggle('nowrap', nowrap);
 
-        // 打开弹窗前关闭所有其它浮层（添加数据集菜单 / 分组更多 / 底图 / 搜索），
-        // 避免它们与弹窗重叠显示（典型场景：移除数据集时「选择数据集」窗口与确认弹窗重叠）
-        const dsAdd = document.getElementById('datasetAdd');
-        if (dsAdd) closeAddDatasetMenu(dsAdd);
+        // 打开弹窗前关闭所有其它浮层（分组更多 / 底图 / 搜索），
+        // 避免它们与弹窗重叠显示
         closeAllGroupMoreMenus();
         closeAllMapToolMenus();
 
@@ -3166,6 +3099,7 @@ const UIManager = (function() {
         syncDatasetHiddenStates,
         updateLegend,
         updateButtonsState,
+        addDatasets,
         toggleTheme,
         toggleFullscreen,
         togglePanel,

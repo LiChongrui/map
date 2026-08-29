@@ -5,8 +5,6 @@
 const MapManager = (function() {
     let mapInstance = null;
     let currentBaseLayer = null;
-    let baseLayerLabelEl = null;
-    let baseLayerControlElement = null;
     const baseLayerControls = {};
 
     function init(containerId = 'map') {
@@ -44,8 +42,7 @@ const MapManager = (function() {
         addCoordinateControl();
 
         addBaseLayers();
-        // R107：底图切换改为右上角图标按钮（#basemapToggle，见 uiManager.initBaseLayerToolMenu），
-        // 不再动态创建顶部中央药丸，此处不再调用 addBaseLayerControl()
+        // R107：底图切换入口为右上角图标按钮（#basemapToggle，见 uiManager.initBaseLayerToolMenu）
         mapInstance.getContainer().querySelectorAll('[title]').forEach(element => {
             element.removeAttribute('title');
         });
@@ -126,37 +123,7 @@ const MapManager = (function() {
                 currentBaseLayer = name;
             }
         }
-        updateBaseLayerLabel();
         refreshTilesThemeFilter(); // R95：初始底图按当前主题套滤镜（暗色恢复启动时）
-    }
-
-    function updateBaseLayerControl() {
-        updateBaseLayerLabel();
-    }
-
-    // 地图顶部中央「当前底图」可点击控件：底图信息（名称）与切换按钮融合为同一个药丸，
-    // 点击展开 #baseLayerToolMenu 进行切换（R86：从底部左侧移到顶部中央；作为 .map-area 直接子元素，
-    // 与 #map 平级，点击不会触发地图拖拽/平移；mousedown 亦阻止冒泡）
-    function addBaseLayerControl() {
-        const mapArea = document.querySelector('.map-area');
-        const el = document.createElement('button');
-        el.className = 'basemap-pill';
-        el.id = 'basemapPill';
-        el.type = 'button';
-        el.setAttribute('aria-label', '切换底图');
-        el.setAttribute('aria-haspopup', 'menu');
-        el.dataset.tooltip = '切换底图';
-        // 阻止地图平移：药丸在 #map 之外，mousedown 不再冒泡到地图容器
-        el.addEventListener('mousedown', (e) => e.stopPropagation());
-        el.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-        baseLayerLabelEl = el;
-        updateBaseLayerLabel();
-        if (mapArea) {
-            mapArea.appendChild(el);
-        } else {
-            mapInstance.getContainer().appendChild(el);
-        }
-        positionBasemapPill();
     }
 
     // R88：自定义缩放控件（独立于 Leaflet 默认 control）。按钮浮于 .map-area 右下角「上层」，
@@ -200,27 +167,11 @@ const MapManager = (function() {
         if (outBtn) outBtn.disabled = z <= minZoom;
     }
 
-    function updateBaseLayerLabel() {
-        if (!baseLayerLabelEl) return;
-        baseLayerLabelEl.innerHTML = '';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-map';
-        const span = document.createElement('span');
-        span.className = 'basemap-pill-name';
-        span.textContent = currentBaseLayer || '';
-        const chev = document.createElement('i');
-        chev.className = 'fas fa-chevron-down basemap-pill-chevron';
-        baseLayerLabelEl.appendChild(icon);
-        baseLayerLabelEl.appendChild(span);
-        baseLayerLabelEl.appendChild(chev);
-    }
-
     function switchBaseLayer(name) {
         const target = baseLayerControls[name];
         if (!target || name === currentBaseLayer) return;
         const old = currentBaseLayer ? baseLayerControls[currentBaseLayer] : null;
         currentBaseLayer = name;
-        updateBaseLayerControl();
 
         if (!old) { target.addTo(mapInstance); refreshTilesThemeFilter(); return; } // R95
 
@@ -338,44 +289,15 @@ const MapManager = (function() {
         return currentBaseLayer;
     }
 
-    // ---------- R95：底图随主题统一变暗（流行做法：栅格瓦片 CSS 滤镜） ----------
-    // R91 守卫只在「冷色/暗黑」之间联动切换，用户手动选了 OSM/影像等底图后，
-    // 主题切换不再管底图 → 出现「亮色 UI 配暗色地图 / 暗色 UI 配亮色地图」的错配。
-    // 流行处理（Google/高德暗色模式、Leaflet 社区通用方案）：暗色主题下对非原生暗色
-    // 底图叠加 invert + hue-rotate 滤镜，亮度反转、色相保持，任意底图都呈现暗色；
-    // 原生暗色（Esri暗黑地图）与空白底图不处理。
-    const TILE_DARK_FILTER = 'invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.85)';
-
-    function isNativeDarkBasemap(name) {
-        return name === 'Esri暗黑地图';
-    }
-
-    // 对当前在地图上的所有底图层套用/摘除暗色滤镜（同时最多两层：R94 交叉淡化过渡期）
+    // 底图始终保持原始风格，主题切换不对其叠加任何滤镜（用户要求：暗色模式下也保留底图原貌）
     function refreshTilesThemeFilter() {
         if (!mapInstance) return;
-        let dark = false;
-        try { dark = document.documentElement.getAttribute('data-theme') === 'dark'; } catch (e) { return; }
         for (const [name, layer] of Object.entries(baseLayerControls)) {
             if (!mapInstance.hasLayer(layer)) continue;
             const el = typeof layer.getContainer === 'function' ? layer.getContainer() : null;
             if (!el) continue; // 空白底图等无容器
-            el.style.filter = (dark && !isNativeDarkBasemap(name)) ? TILE_DARK_FILTER : '';
+            el.style.filter = '';
         }
-    }
-
-    // R99：底图切换药丸始终位于「可见地图区域」顶部中心（避开展开的侧边栏）
-    function positionBasemapPill() {
-        const pill = document.getElementById('basemapPill');
-        if (!pill) return;
-        const sidebar = document.getElementById('sidebar');
-        let visibleLeft = 0;
-        if (sidebar && !sidebar.classList.contains('sidebar--collapsed')) {
-            visibleLeft = sidebar.getBoundingClientRect().right;
-        }
-        const visibleWidth = Math.max(0, window.innerWidth - visibleLeft);
-        const left = visibleLeft + visibleWidth / 2;
-        pill.style.left = `${left}px`;
-        pill.style.transform = 'translateX(-50%)';
     }
 
     return {
@@ -390,7 +312,6 @@ const MapManager = (function() {
         getCenter,
         invalidateSize,
         repositionBottomHud,
-        positionBasemapPill,
         destroy,
     };
 })();

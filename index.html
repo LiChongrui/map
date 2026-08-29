@@ -7,12 +7,12 @@
     <link rel="icon" type="image/svg+xml" href="res/favicon.svg" />
 
     <!-- ===== Leaflet CSS ===== -->
-    <link rel="stylesheet" href="js/vendor/leaflet.css?v=R120" />
+    <link rel="stylesheet" href="js/vendor/leaflet.css?v=R153" />
     <!-- ===== Font Awesome 图标库 ===== -->
-    <link rel="stylesheet" href="js/vendor/fontawesome-all.min.css?v=R120" />
+    <link rel="stylesheet" href="js/vendor/fontawesome-all.min.css?v=R153" />
 
     <!-- ===== 自定义 CSS（?v= 缓存穿透：每次改动升版本号，确保用户拿到最新样式） ===== -->
-    <link rel="stylesheet" href="css/style.css?v=R120" />
+    <link rel="stylesheet" href="css/style.css?v=R153" />
 </head>
 <body>
 
@@ -39,24 +39,10 @@
 
         <!-- ===== 图层面板（作为侧边栏主体） ===== -->
         <div id="controlPanel" class="sidebar-body">
-        <!-- 面板头部 -->
-        <div class="panel-header">
-            <div class="panel-header-title">
-                <span class="panel-title-icon"><i class="fas fa-layer-group"></i></span>
-                <div class="panel-title-text">
-                    <h3>图层面板</h3>
-                    <span class="panel-title-sub">管理地图图层与数据集</span>
-                </div>
-            </div>
-            <div class="panel-header-actions">
-                <div id="datasetAdd" class="dataset-select" data-tooltip="添加数据集到地图">
-                    <button type="button" class="dataset-add-btn" aria-haspopup="dialog" aria-expanded="false">
-                        <i class="fas fa-plus"></i>
-                        <span>添加数据集</span>
-                    </button>
-                    <div class="dataset-select-menu" role="dialog" aria-label="选择要加载的数据集"></div>
-                </div>
-            </div>
+        <!-- R127：顶部 Tab 在「数据集 / 图层」两视图间切换 -->
+        <div class="panel-tabs" role="tablist" aria-label="面板视图">
+            <button type="button" class="panel-tab is-active" data-view="datasets" role="tab" aria-selected="true"><i class="fas fa-database"></i> 数据集</button>
+            <button type="button" class="panel-tab" data-view="layers" role="tab" aria-selected="false"><i class="fas fa-layer-group"></i> 图层</button>
         </div>
 
         <!-- 工具栏 -->
@@ -73,7 +59,11 @@
                     <i class="fas fa-times-circle"></i>
                 </button>
             </div>
-            <div class="toolbar-actions">
+            <div class="toolbar-actions" id="datasetBulkActions">
+                <button type="button" class="dataset-bulk-btn" id="datasetAddAll" data-tooltip="添加全部数据集到图层" aria-label="添加全部数据集到图层"><i class="fas fa-plus"></i></button>
+                <button type="button" class="dataset-bulk-btn danger" id="datasetRemoveAll" data-tooltip="移除全部已添加数据集" aria-label="移除全部已添加数据集"><i class="fas fa-minus"></i></button>
+            </div>
+            <div class="toolbar-actions" id="groupToggleActions">
                 <button type="button" class="toolbar-btn" id="expandAllGroups" data-tooltip="展开所有数据集" aria-label="展开所有数据集">
                     <i class="fas fa-angles-down"></i>
                 </button>
@@ -83,27 +73,23 @@
             </div>
         </div>
 
-        <!-- 图层列表 -->
-        <div id="layerList" class="layer-list-container">
-            <!-- 由 JS 动态渲染 -->
+        <!-- R127：数据集视图（添加 / 移除数据集，含说明与图层构成） -->
+        <div id="datasetView" class="view-pane">
+            <div id="datasetList" class="dataset-list"></div>
         </div>
 
-        <!-- 面板底部：数据集 / 图层 / 可见 三项合并统计 -->
+        <!-- 图层视图（原分组图层列表，R127 包裹进 view-pane） -->
+        <div id="layerView" class="view-pane" hidden>
+            <div id="layerList" class="layer-list-container"></div>
+        </div>
+
+        <!-- 底部操作条：统计（始终显示）+ 移除全部数据集（仅图层视图）+ 隐藏/显示所有数据集 + 缩放至全部可见图层（数据集/图层视图均显示） -->
         <div class="panel-footer">
-            <div class="footer-stats">
-                <span class="stat-item" data-tooltip="已加载数据集">
-                    <i class="fas fa-database"></i><span id="statDatasets">0</span>
-                </span>
-                <span class="stat-sep">·</span>
-                <span class="stat-item" data-tooltip="图层总数">
-                    <i class="fas fa-layer-group"></i><span id="statLayers">0</span>
-                </span>
-                <span class="stat-sep">·</span>
-                <span class="stat-item" data-tooltip="可见图层">
-                    <i class="fas fa-eye"></i><span id="statVisible">0</span>
-                </span>
-            </div>
-            <div class="footer-actions">
+            <div class="panel-stats" id="panelStats"></div>
+            <div class="footer-actions" id="footerActions">
+                <button type="button" class="footer-btn danger" id="footerRemoveAll" data-tooltip="移除全部已添加数据集" aria-label="移除全部已添加数据集" hidden>
+                    <i class="fas fa-trash-can"></i>
+                </button>
                 <button type="button" class="footer-btn" id="datasetVisToggle" data-tooltip="隐藏所有数据集" aria-label="隐藏所有数据集">
                     <i class="fas fa-eye-slash"></i>
                 </button>
@@ -114,13 +100,13 @@
         </div>
     </div>
 
-    <!-- 关于入口融合在面板底部：点击打开作者/关于弹窗；图标用「洛」字，文本为「洛 人文历史 · 地理爱好者」 -->
-    <footer class="sidebar-footer" id="aboutFooter" role="button" tabindex="0" data-tooltip="关于：洛 · 人文历史 · 地理爱好者" aria-label="关于作者 洛">
-        <span class="sidebar-footer-icon sidebar-footer-logo" aria-hidden="true">洛</span>
-        <div class="sidebar-footer-text">
-            <span class="sidebar-footer-title">洛</span>
-            <span class="sidebar-footer-sub">人文历史 · 地理爱好者</span>
-        </div>
+    <!-- 底部：关于 入口 + 版本号（v0.2.0 为当前大版本） -->
+    <footer class="sidebar-footer">
+        <button type="button" class="sidebar-footer-btn" id="aboutAuthorBtn" data-tooltip="关于 洛老师">
+            <i class="fas fa-circle-info"></i>
+            <span>关于</span>
+        </button>
+        <span class="sidebar-footer-version">v0.2.0</span>
     </footer>
 
     </aside>
@@ -286,17 +272,17 @@
     </div>
 
     <!-- ===== 第三方 JS（本地化，避免 CDN 失效导致地图/拖拽不可用） ===== -->
-    <script src="js/vendor/leaflet.js?v=R120"></script>
+    <script src="js/vendor/leaflet.js?v=R153"></script>
     <!-- ===== SortableJS 拖拽排序（本地副本，避免 CDN 加载失败导致拖拽失效） ===== -->
-    <script src="js/vendor/Sortable.min.js?v=R120"></script>
+    <script src="js/vendor/Sortable.min.js?v=R153"></script>
 
     <!-- ===== 自定义 JS ===== -->
-    <script src="js/config.js?v=R120"></script>
-    <script src="js/measureTools.js?v=R120"></script>
-    <script src="js/dataScanner.js?v=R120"></script> 
-    <script src="js/mapManager.js?v=R120"></script>
-    <script src="js/layerManager.js?v=R120"></script>
-    <script src="js/uiManager.js?v=R120"></script>
-    <script src="js/main.js?v=R120"></script>
+    <script src="js/config.js?v=R153"></script>
+    <script src="js/measureTools.js?v=R153"></script>
+    <script src="js/dataScanner.js?v=R153"></script> 
+    <script src="js/mapManager.js?v=R153"></script>
+    <script src="js/layerManager.js?v=R153"></script>
+    <script src="js/uiManager.js?v=R153"></script>
+    <script src="js/main.js?v=R153"></script>
 </body>
 </html>

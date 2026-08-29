@@ -16,7 +16,6 @@ const MeasureTools = (function() {
 
     const DISTANCE_COLOR = '#4f6ef7';
     const AREA_COLOR = '#10b981';
-    const POINT_COLOR = '#4f6ef7';
 
     // ---------- 初始化 ----------
     // R83：支持传入外部工具栏容器；若提供，则按钮渲染到该容器，不创建 Leaflet control
@@ -178,15 +177,6 @@ const MeasureTools = (function() {
             area += xy[i].x * xy[j].y - xy[j].x * xy[i].y;
         }
         return Math.abs(area) / 2;
-    }
-
-    // 多边形中心（顶点平均，适用于凸多边形近似）
-    function polygonCenter(pts) {
-        if (!pts.length) return null;
-        return L.latLng(
-            pts.reduce((s, p) => s + p.lat, 0) / pts.length,
-            pts.reduce((s, p) => s + p.lng, 0) / pts.length
-        );
     }
 
     function formatLength(m) {

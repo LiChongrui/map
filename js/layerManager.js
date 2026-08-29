@@ -30,9 +30,6 @@ const LayerManager = (function() {
         return defaultLabelSettings();
     }
     let labelSettings = loadLabelSettings();
-    function persistLabelSettings() {
-        try { localStorage.setItem(LABEL_STORAGE_KEY, JSON.stringify(labelSettings)); } catch (e) { /* 存储失败不阻塞 */ }
-    }
 
     // R108：每图层标注覆盖设置（全局标注基础上按图层单独调整）
     const LAYER_LABEL_STORAGE_KEY = 'lyc_layer_label_settings_v1';
@@ -94,18 +91,81 @@ const LayerManager = (function() {
         } catch (error) { /* 存储失败不阻塞交互 */ }
     }
 
-    // 按 savedOrder 重排 layers（未记录的图层按原有相对顺序追加在后）
+    // 清单数据集顺序（数据源 id 序列）：作为无手动排序时的稳定基准顺序
+    function getCanonicalLayerSequence() {
+        const datasets = DataScanner.getDatasets();
+        if (!datasets || !datasets.length) return null;
+        const seq = [];
+        datasets.forEach(d => (d.sources || []).forEach(s => seq.push(s.id)));
+        return seq;
+    }
+
+    // 新加载的数据集默认置于顶部：将新图层 id 整体置顶（内部按清单顺序稳定排列，
+    // 保证批量添加（「添加全部」）结果可预测），并持久化顺序。所有数据集一视同仁，
+    // 包括启动时默认加载的数据集（无特殊基准层待遇）。
+    // 调用方（批量添加）应在所有数据集加载完成后、finalizeBatchLoad 之前调用一次。
+    function prependNewLayersOnTop(newIds) {
+        if (!newIds || newIds.length === 0) return;
+        const seq = getCanonicalLayerSequence();
+        const sorted = seq
+            ? newIds.slice().sort((a, b) => {
+                const ia = seq.indexOf(a), ib = seq.indexOf(b);
+                return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
+            })
+            : newIds.slice();
+        const current = readSavedOrder() || [...layers.keys()].filter(id => !newIds.includes(id));
+        const filtered = current.filter(id => !newIds.includes(id));
+        persistOrder([...sorted, ...filtered]);
+    }
+
+    // 有手动排序时，把「不在 savedOrder 中的新增图层」按清单数据集顺序插入到合适邻位，
+    // 而非一律追加到末尾（解决：移除某数据集后重新添加，它总是落在最后一个图层的问题）
+    function insertAtCanonicalPositions(remaining) {
+        const seq = getCanonicalLayerSequence();
+        const byId = new Map(layers); // 当前 = savedOrder 子集
+        const savedList = [...layers.keys()];
+        const rankOf = id => {
+            const info = byId.get(id);
+            const group = info ? (info.config.group || '未分组') : null;
+            const idx = DataScanner.getDatasets().findIndex(d => d.name === group);
+            return idx >= 0 ? idx : Number.MAX_SAFE_INTEGER;
+        };
+        const remainingSorted = seq
+            ? remaining.slice().sort((a, b) => {
+                const ia = seq.indexOf(a), ib = seq.indexOf(b);
+                return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
+            })
+            : remaining.slice();
+        const result = [];
+        const inserted = new Set();
+        for (const sid of savedList) {
+            const srank = rankOf(sid);
+            for (const rid of remainingSorted) {
+                if (inserted.has(rid)) continue;
+                if (rankOf(rid) < srank) { result.push(rid); inserted.add(rid); }
+            }
+            result.push(sid);
+        }
+        for (const rid of remainingSorted) {
+            if (!inserted.has(rid)) { result.push(rid); inserted.add(rid); }
+        }
+        layers.clear();
+        result.forEach(id => { if (byId.has(id)) layers.set(id, byId.get(id)); });
+    }
+
+    // 按 savedOrder 重排 layers；无手动排序时回落到清单顺序，新增图层插入到对应邻位
     function applySavedOrder() {
         const savedOrder = readSavedOrder();
+        // 无保存顺序：保持当前顺序（新数据集已在加载时置顶），无需重排
         if (!savedOrder) return;
         const currentLayers = new Map(layers);
         layers.clear();
         savedOrder.forEach(id => {
             if (currentLayers.has(id)) layers.set(id, currentLayers.get(id));
         });
-        currentLayers.forEach((info, id) => {
-            if (!layers.has(id)) layers.set(id, info);
-        });
+        const remaining = [];
+        currentLayers.forEach((info, id) => { if (!layers.has(id)) remaining.push(id); });
+        if (remaining.length) insertAtCanonicalPositions(remaining);
     }
 
     // 颜色加深（每通道 * factor）：面默认描边 = 填充色的深一档同色系
@@ -805,32 +865,56 @@ const LayerManager = (function() {
     }
 
     // ---------- 按数据集加载 ----------
-    // 加载指定数据集的全部图层（已加载的跳过），加载后应用保存的图层顺序并重设地图叠加次序。
+    // 加载指定数据集的全部图层（已加载的跳过）。opts.defer=true 时仅把图层加入地图、不重排顺序、
+    // 不刷新 UI、不弹加载遮罩，交由调用方（批量添加）一次性 finalizeBatchLoad() 统一处理，
+    // 避免逐个数据集重复全量重排/重渲染（「添加全部」时尤为明显）。
     // 返回 { loaded, failed }；自定义样式保存在 localStorage，重新添加数据集后自动恢复
-    function loadDataset(name) {
+    function loadDataset(name, opts) {
+        const defer = !!(opts && opts.defer);
         const dataset = DataScanner.getDataset(name);
-        if (!dataset) return Promise.resolve({ loaded: 0, failed: 0 });
+        if (!dataset) return Promise.resolve({ loaded: 0, failed: 0, ids: [] });
 
         const pending = dataset.sources.filter(source => !layers.has(source.id));
-        if (pending.length === 0) return Promise.resolve({ loaded: 0, failed: 0 });
+        if (pending.length === 0) return Promise.resolve({ loaded: 0, failed: 0, ids: [] });
 
-        emitLoading(true, name);
+        if (!defer) emitLoading(true, name);
         return Promise.all(pending.map(source => loadLayer(source))).then(() => {
-            // 应用拖拽保存的顺序（新数据集图层按来源顺序追加在末尾），并按最终顺序重设叠加次序
-            applySavedOrder();
-            // 列表越靠上 = 绘制层级越高（reapplyLayerOrder 逆序移动 SVG path）
-            reapplyLayerOrder(MapManager.getMap());
-
-            const loaded = pending.filter(source => layers.has(source.id)).length;
+            const newIds = pending.filter(source => layers.has(source.id)).map(source => source.id);
+            const loaded = newIds.length;
             const failed = pending.length - loaded;
-            UIManager.updateLayerPanel();
-            UIManager.updateLegend();
-            updateStats();
-            UIManager.updateButtonsState(layers.size > 0);
-            return { loaded, failed };
+            if (!defer) {
+                // 新添加的数据集默认置于顶部：先更新持久化顺序，再按最终顺序重排叠加次序
+                prependNewLayersOnTop(newIds);
+                applySavedOrder();
+                // 列表越靠上 = 绘制层级越高（reapplyLayerOrder 逆序移动 SVG path）
+                reapplyLayerOrder(MapManager.getMap());
+                UIManager.updateLayerPanel();
+                UIManager.updateLegend();
+                updateStats();
+                UIManager.updateButtonsState(layers.size > 0);
+            }
+            return { loaded, failed, ids: newIds };
         }).finally(() => {
-            emitLoading(false, name);
+            if (!defer) emitLoading(false, name);
         });
+    }
+
+    // 批量添加结束后统一重排图层顺序 + 地图叠加次序 + 刷新全部相关 UI（仅执行一次）。
+    // 替代逐个数据集重复全量重排/重渲染，逻辑更清晰、无中间态闪烁。
+    function finalizeBatchLoad() {
+        // 按保存顺序（或清单基准顺序）重排图层列表与地图叠加次序
+        applySavedOrder();
+        reapplyLayerOrder(MapManager.getMap());
+        // 同步两视图（数据集标签刷新已添加态、图层标签重渲染列表）+ 图例 + 统计 + 按钮态
+        UIManager.updateLayerPanel();
+        UIManager.updateLegend();
+        updateStats();
+        UIManager.updateButtonsState(layers.size > 0);
+    }
+
+    // 对外暴露的加载遮罩开关：批量添加时由 addDatasets 统一控制，避免逐个数据集闪烁
+    function setLoading(state, label) {
+        emitLoading(state, label);
     }
 
     // 按「列表越靠上 = 绘制层级越高」重设地图叠加次序。
@@ -1156,6 +1240,8 @@ const LayerManager = (function() {
         setStat('statDatasets', groups.size);
         setStat('statLayers', layers.size);
         setStat('statVisible', visibleCount);
+        // R124：面板头部「图层」标题旁的图层数徽标
+        setStat('panelLayerCount', layers.size);
     }
 
     // ---------- 搜索过滤 ----------
@@ -1221,57 +1307,6 @@ const LayerManager = (function() {
         UIManager.updateButtonsState();
     }
 
-    // 恢复默认样式
-    function resetLayerStyle(id) {
-        const info = layers.get(id);
-        if (!info) return;
-        info.styleConfig = defaultStyle(info.config);
-        applyLayerStyle(info);
-        if (id === highlightedId) refreshHighlightOverlay();
-        persistStyles();
-        UIManager.updateLayerItem(id);
-        UIManager.updateLegend();
-        UIManager.updateButtonsState();
-    }
-
-    // 重置所有图层为默认样式（批量，一次持久化）
-    function resetAllStyles() {
-        layers.forEach((info) => {
-            info.styleConfig = defaultStyle(info.config);
-            applyLayerStyle(info);
-        });
-        refreshHighlightOverlay();
-        persistStyles();
-        UIManager.updateLayerPanel();
-        UIManager.updateLegend();
-        UIManager.updateButtonsState();
-    }
-
-    // ---------- 按数据集重置样式 ----------
-    // 重置指定数据集内全部图层为默认样式，返回重置的图层数
-    function resetGroupStyles(name) {
-        const groupLayers = getLayersByGroup(name);
-        let count = 0;
-        groupLayers.forEach(info => {
-            info.styleConfig = defaultStyle(info.config);
-            applyLayerStyle(info);
-            if (highlightedId !== null && layers.get(highlightedId) === info) refreshHighlightOverlay();
-            count += 1;
-        });
-        persistStyles();
-        UIManager.updateLayerPanel();
-        UIManager.updateLegend();
-        UIManager.updateButtonsState();
-        return count;
-    }
-
-    // 指定数据集内是否存在样式偏离默认值的图层（分组头「重置样式」按钮可用性）
-    function groupHasCustomStyles(name) {
-        for (const id of getLayersByGroup(name).keys()) {
-            if (!isLayerStyleDefault(id)) return true;
-        }
-        return false;
-    }
 
     // ---------- 样式偏离检测（控制"重置"按钮可用性） ----------
 
@@ -1283,30 +1318,12 @@ const LayerManager = (function() {
         return Object.keys(defaults).every(key => info.styleConfig[key] === defaults[key]);
     }
 
-    // 是否存在任一图层样式偏离默认值（决定"重置所有样式"按钮是否可用）
-    function hasCustomStyles() {
-        for (const id of layers.keys()) {
-            if (!isLayerStyleDefault(id)) return true;
-        }
-        return false;
-    }
 
     // ---------- 获取信息 ----------
     function getLayerInfo(id) { return layers.get(id) || null; }
     function getAllLayers() { return layers; }
     function getLayersByGroup(group) {
         return new Map([...layers].filter(([, info]) => (info.config.group || '未分组') === group));
-    }
-
-    // ---------- R106：标注全局设置 ----------
-    // 返回所有已加载要素的属性字段并集（用于标注字段下拉）
-    function getLabelFields() {
-        const keys = new Set();
-        layers.forEach(info => {
-            const feats = (info.data && info.data.features) ? info.data.features : [];
-            feats.forEach(f => { Object.keys(f.properties || {}).forEach(k => keys.add(k)); });
-        });
-        return [...keys].sort();
     }
 
     // R109：返回单个图层自身包含的字段（用于每图层标注设置的下拉候选）
@@ -1318,9 +1335,6 @@ const LayerManager = (function() {
         return [...keys].sort();
     }
 
-    function getLabelSettings() {
-        return Object.assign({}, labelSettings);
-    }
 
     // R108：获取指定图层的 effective 标注设置（全局默认值 + 该图层覆盖值）
     function getLayerLabelSettings(id) {
@@ -1375,20 +1389,6 @@ const LayerManager = (function() {
         groupLayers.forEach(info => setLayerLabelsVisible(info._id, target));
     }
 
-    // 应用标注设置（字段 / 文字色 / 扫边 / 字体）。
-    // patch.show 为 true/false 时同步所有图层的标注显隐；其余项仅重建标注外观。
-    function applyLabelSettings(patch) {
-        if (!patch || typeof patch !== 'object') return;
-        Object.assign(labelSettings, patch);
-        persistLabelSettings();
-        const map = MapManager.getMap();
-        layers.forEach(info => {
-            if ('show' in patch && patch.show !== null && patch.show !== undefined) {
-                info.labelsVisible = !!patch.show && !!info.visible;
-            }
-            rebuildLabels(info);
-        });
-    }
 
     // R106：地点搜索点击后的「高亮 + 属性弹窗」——以要素真实几何绘制高亮描边并闪烁 3s，
     // 同时弹出该要素的属性（与点击要素一致），而非在中心叠加一个独立点标记。
@@ -1464,6 +1464,9 @@ const LayerManager = (function() {
         loadLayer,
         loadDataset,
         removeDataset,
+        finalizeBatchLoad,
+        prependNewLayersOnTop,
+        setLoading,
         setLoadingListener,
         getLoadedGroupNames,
         setLayerOrder,
@@ -1484,21 +1487,13 @@ const LayerManager = (function() {
         getLayerStyle,
         getThemeColor,
         updateLayerStyle,
-        resetLayerStyle,
-        resetAllStyles,
-        resetGroupStyles,
-        groupHasCustomStyles,
         isLayerStyleDefault,
-        hasCustomStyles,
         getAllLayers,
         getLayersByGroup,
-        getLabelFields,
         getLayerFields,
-        getLabelSettings,
         getLayerLabelSettings,
         setLayerLabelSettings,
         setLayerLabelsVisible,
-        applyLabelSettings,
         toggleDatasetLabels,
         flashFeature,
         filterLayers,

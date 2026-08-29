@@ -30,11 +30,10 @@
         try {
             const datasets = await DataScanner.scanAndLoad();
 
-            // 初次打开默认添加第一组数据集，打开即可看到数据
-            if (datasets.length > 0) {
-                const result = await LayerManager.loadDataset(datasets[0].name);
-                if (result.loaded > 0) fitToDataset(datasets[0].name);
-            }
+            // R138：默认加载「隋唐洛阳-城」数据集（清单中存在且尚未加载时）
+            const DEFAULT_DATASET = '隋唐洛阳-城';
+            const defaultExists = DataScanner.getDatasets().some(d => d.name === DEFAULT_DATASET);
+            const defaultLoaded = LayerManager.getLoadedGroupNames().includes(DEFAULT_DATASET);
 
             UIManager.updateLayerPanel();
             LayerManager.updateStats();
@@ -42,6 +41,11 @@
             if (datasets.length === 0) {
                 UIManager.showToast('未找到可用数据集', 'warning');
                 console.warn('[数据] 未配置任何数据集');
+            } else if (defaultExists && !defaultLoaded) {
+                // 默认加载并缩放到该数据集范围（addDatasets 内部已 fitBounds）
+                await UIManager.addDatasets([DEFAULT_DATASET]);
+                // 刷新两个视图的列表与统计（数据集行标记「已添加」、图层列表同步）
+                UIManager.updateLayerPanel();
             }
         } catch (error) {
             console.error('❌ 初始化失败:', error);
