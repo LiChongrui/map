@@ -48,7 +48,7 @@
     --label-halo: rgba(255, 255, 255, 0.92);
 
     /* R83：Copernicus 式全高左侧边栏布局 */
-    --sidebar-width: 320px;
+    --sidebar-width: 380px;
     --sidebar-header-height: 60px;
     --map-tool-size: 38px;
 
@@ -179,9 +179,9 @@ body {
     container-name: sidebar;
 }
 
-/* 仅在桌面端显示右侧圆角（移动端为全屏抽屉，圆角无意义） */
+/* 移动端抽屉为非全屏卡片，保留右侧圆角，圆角处应透出地图（透明） */
 @media (max-width: 820px) {
-    .sidebar { border-radius: 0; }
+    .sidebar { border-radius: 0 var(--radius-xl) var(--radius-xl) 0; }
 }
 
 /* 头部/底部跟随面板右侧圆角，避免渐变与背景溢出直角 */
@@ -194,7 +194,8 @@ body {
 
 .sidebar-header {
     height: var(--sidebar-header-height);
-    background: var(--accent-gradient);
+    /* R154：标题栏蓝色调浅（仅此处，不影响其它渐变按钮） */
+    background: linear-gradient(135deg, #7aa0f7 0%, #5880f3 100%);
     color: #fff;
     display: flex;
     align-items: center;
