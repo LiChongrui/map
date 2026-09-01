@@ -996,7 +996,14 @@ body.resizing .map-area {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 4px 8px 10px;
+    /* 顶部不留 padding：sticky 分类头吸顶时需贴住容器顶边
+       （padding 会把吸顶位置顶到 padding 下沿，上方留出缝隙，滚动的行会从缝隙里穿出） */
+    padding: 0 8px 10px;
+}
+
+/* 首个分类用 margin 提供顶部间距（滚动吸顶时该间距随组头滚走，组头贴容器顶） */
+.dataset-cat:first-child {
+    margin-top: 8px;
 }
 
 .dataset-row {
@@ -1055,10 +1062,11 @@ body.resizing .map-area {
     font-size: 12px;
     line-height: 1.5;
     color: var(--text-secondary);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    /* R159：摘要固定单行，超出省略（完整介绍由悬停提示承载）。
+       宽度 380px 面板下可用约 217px ≈ 18 个中文字，摘要生成时已压到 17 字以内，此处仅作兜底。 */
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 .dataset-row-meta {
     margin-top: 4px;
@@ -1113,6 +1121,138 @@ body.resizing .map-area {
     font-size: 26px;
     margin-bottom: 8px;
     opacity: 0.5;
+}
+
+/* ===== 数据集视图：分类分组（古代洛阳 / 古代北京 / 历代行政区划 …） ===== */
+.dataset-cat {
+    margin-bottom: 6px;
+    border-radius: var(--radius-md);
+}
+
+.dataset-cat-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 0 var(--border-color);
+}
+.dataset-cat-header:hover {
+    background: var(--bg-hover);
+}
+
+.dataset-cat-collapse {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--transition-base), color var(--transition-fast);
+}
+.dataset-cat.collapsed .dataset-cat-collapse {
+    transform: rotate(-90deg);
+}
+
+.dataset-cat-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    flex-shrink: 0;
+}
+
+.dataset-cat-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 已添加数 / 总数 */
+.dataset-cat-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.dataset-cat-header:hover .dataset-cat-count {
+    background: var(--bg-active);
+}
+
+/* 整组添加 / 移除：与行内 .ds-pill 同款，尺寸略小 */
+.dataset-cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+.dataset-cat-pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+.dataset-cat-pill.is-loaded {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+}
+.dataset-cat-pill.is-loaded:hover {
+    background: var(--accent-hover, #3f5af0);
+    border-color: var(--accent-hover, #3f5af0);
+}
+
+.dataset-cat-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0 4px 6px;
+}
+.dataset-cat.collapsed .dataset-cat-items {
+    display: none;
 }
 
 
@@ -2686,6 +2826,16 @@ button:focus-visible {
     pointer-events: none;
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
     animation: tooltipIn var(--transition-fast) both;
+}
+
+/* 长文本提示（数据集完整介绍，配 data-tooltip-wrap）：允许换行、更宽、正文字重 */
+.app-tooltip--wrap {
+    max-width: min(320px, calc(100vw - 16px));
+    white-space: normal;
+    font-weight: 400;
+    line-height: 1.55;
+    text-align: left;
+    padding: 8px 10px;
 }
 
 @keyframes tooltipIn {

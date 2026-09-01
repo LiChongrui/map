@@ -22,21 +22,47 @@ const DataScanner = (function() {
             manifest.datasets.forEach(dataset => {
                 if (!dataset || typeof dataset !== 'object') return;
                 const name = String(dataset.name || '').trim() || '未命名数据集';
-                list.push({ name, files: Array.isArray(dataset.files) ? dataset.files : [], info: dataset.info || '' });
+                // 数据集分组：manifest 显式 category 优先，缺省由名称规则推断（见 inferCategory）
+                list.push({ name, files: Array.isArray(dataset.files) ? dataset.files : [], info: dataset.info || '', category: dataset.category || '' });
             });
         } else if (manifest.dataset && typeof manifest.dataset === 'object' && !Array.isArray(manifest.dataset)) {
             Object.entries(manifest.dataset).forEach(([name, files]) => {
-                list.push({ name, files: Array.isArray(files) ? files : [] });
+                list.push({ name, files: Array.isArray(files) ? files : [], category: '' });
             });
         } else if (Array.isArray(manifest.dataset)) {
             manifest.dataset.forEach(dataset => {
                 if (!dataset || typeof dataset !== 'object') return;
-                list.push({ name: String(dataset.name || '未分组'), files: Array.isArray(dataset.files) ? dataset.files : [] });
+                list.push({ name: String(dataset.name || '未分组'), files: Array.isArray(dataset.files) ? dataset.files : [], category: dataset.category || '' });
             });
         } else if (Array.isArray(manifest.files)) {
-            list.push({ name: '未分组', files: manifest.files });
+            list.push({ name: '未分组', files: manifest.files, category: '' });
         }
         return list;
+    }
+
+    // ---------- 数据集分组（分类） ----------
+    // 分组展示顺序：列出的优先按此顺序，未列出的按出现顺序排在后面
+    const CATEGORY_ORDER = ['古代洛阳', '古代北京', '历代行政区划'];
+    // 无显式 category 时的兜底推断（保证新增数据集也有合理归属）
+    function inferCategory(name) {
+        if (/洛阳/.test(name)) return '古代洛阳';
+        if (/北京/.test(name)) return '古代北京';
+        if (/行政区划/.test(name)) return '历代行政区划';
+        return '其他';
+    }
+    // 当前全部数据集的分类名（有序）
+    function getCategories() {
+        const set = new Set();
+        datasets.forEach(d => set.add(d.category || '其他'));
+        const list = [...set];
+        return list.sort((a, b) => {
+            const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+            return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
+        });
+    }
+    // 按分类取数据集（保持清单内相对顺序）
+    function getDatasetsByCategory(category) {
+        return datasets.filter(d => (d.category || '其他') === category);
     }
 
     // ---------- 从 manifest.json 加载数据集 ----------
@@ -92,7 +118,14 @@ const DataScanner = (function() {
                         };
                     })
                     .filter(Boolean);
-                return { name: dataset.name, order: datasetIndex, sources, info: dataset.info || '' };
+                return {
+                    name: dataset.name,
+                    order: datasetIndex,
+                    sources,
+                    info: dataset.info || '',
+                    // 分组：显式 category → 规则推断 → 其他
+                    category: dataset.category || inferCategory(dataset.name),
+                };
             }).filter(dataset => dataset.sources.length > 0);
 
             CONFIG.datasets = datasets;
@@ -145,6 +178,9 @@ const DataScanner = (function() {
         getDataset,
         generateId,
         getDisplayName,
+        getCategories,
+        getDatasetsByCategory,
+        inferCategory,
     };
 
 })();

@@ -19,6 +19,10 @@ const UIManager = (function() {
     const collapsedGroups = new Set(readCollapsedGroups());
     let lastAddedGroup = null; // R143：「最新添加」的数据集（折叠逻辑只保留它展开）
 
+    // 数据集视图中已折叠的「分类分组」（localStorage 持久化，与图层分组折叠互相独立）
+    const CAT_COLLAPSE_STORAGE_KEY = 'lyc_ds_cat_collapsed_v1';
+    const collapsedCategories = new Set(readCollapsedCategories());
+
     function readCollapsedGroups() {
         try {
             const value = JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY));
@@ -30,6 +34,66 @@ const UIManager = (function() {
         try {
             localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...collapsedGroups]));
         } catch (error) { /* 存储失败不阻塞交互 */ }
+    }
+
+    function readCollapsedCategories() {
+        try {
+            const value = JSON.parse(localStorage.getItem(CAT_COLLAPSE_STORAGE_KEY));
+            return Array.isArray(value) ? value : [];
+        } catch (error) { return []; }
+    }
+
+    function persistCollapsedCategories() {
+        try {
+            localStorage.setItem(CAT_COLLAPSE_STORAGE_KEY, JSON.stringify([...collapsedCategories]));
+        } catch (error) { /* 存储失败不阻塞交互 */ }
+    }
+
+    // 数据集介绍摘要：列表里只显示「一句话」，且必须单行显示，完整介绍交给悬停提示。
+    // 单行容量：380px 面板下可用约 217px，12px 字体 ≈ 18 个中文字，故上限取 17 留安全余量。
+    const INFO_SUMMARY_MAX = 17;
+
+    // 超过单行容量时逐级压缩：去括号补充 → 顿号列举缩为「首项+等」→ 只用首分句 → 硬截断
+    function compressInfo(summary, clauses, maxLen) {
+        const steps = [];
+        // 1) 去掉括号及其中的补充说明：（隋称显仁宫苑）/ (二里头遗址) 等
+        const noParen = summary.replace(/[（(][^（()）]*[）)]/g, '').replace(/\s{2,}/g, ' ').trim();
+        if (noParen && noParen.length !== summary.length) steps.push(noParen);
+        // 2) 顿号列举（3 项以上）缩为「首项+等」：东汉、曹魏、西晋、北魏等 → 东汉等
+        const source = steps[0] || summary;
+        const condensed = source.replace(/([^、，,；;]{1,10})(?:、[^、，,；;]{1,10}){2,}(?=等)/g, '$1');
+        if (condensed !== source) steps.push(condensed);
+        // 3) 退回只用第一个分句
+        if (clauses[0] && clauses[0] !== summary) steps.push(clauses[0]);
+        // 按压缩强度依次取第一个能放进单行的结果（越靠前保留的信息越多）
+        for (const candidate of steps) {
+            if (candidate && candidate.length <= maxLen) return candidate;
+        }
+        // 都不够短：取最短候选再硬截断（正常情况下走不到）
+        const shortest = steps.concat(summary).sort((a, b) => a.length - b.length)[0] || summary;
+        return shortest.length > maxLen ? shortest.slice(0, maxLen) + '…' : shortest;
+    }
+
+    function summarizeInfo(info) {
+        const text = String(info || '').trim();
+        if (!text) return '';
+        const firstSentence = text.split(/[。！？!?]/)[0].trim();
+        if (!firstSentence) return text;
+        if (firstSentence.length <= 14) return firstSentence + '。';
+        const clauses = firstSentence.split(/[，,；;]/).map(part => part.trim()).filter(Boolean);
+        let summary = clauses[0] || firstSentence;
+        // 首分句太短（<12 字）并上第二分句，避免出现「洛阳盆地古代水系」这种残句
+        if (summary.length < 12 && clauses.length > 1) summary = clauses.slice(0, 2).join('，');
+        if (summary.length > INFO_SUMMARY_MAX) summary = compressInfo(summary, clauses, INFO_SUMMARY_MAX);
+        return summary;
+    }
+
+    // 分类图标：按类别给一个直观图形（缺省用文件夹）
+    function categoryIcon(category) {
+        if (/洛阳|北京/.test(category)) return 'fa-landmark';
+        if (/行政区划/.test(category)) return 'fa-map';
+        if (/水系|要素/.test(category)) return 'fa-water';
+        return 'fa-folder';
     }
 
     const BUTTON_IDS = [
@@ -167,10 +231,16 @@ const UIManager = (function() {
             return;
         }
 
-        list.innerHTML = datasets.map(dataset => {
+        // 单行数据集渲染（分类分组内复用）
+        const renderRow = dataset => {
             const loaded = loadedGroups.has(dataset.name);
             const safeName = escapeHtml(dataset.name);
-            const info = dataset.info ? escapeHtml(dataset.info) : '暂无说明';
+            const fullInfo = dataset.info || '';
+            // 列表只显示一句话摘要；完整介绍放到悬停提示（data-tooltip-wrap → 宽版换行气泡）
+            const info = fullInfo ? escapeHtml(summarizeInfo(fullInfo)) : '暂无说明';
+            const tooltipAttr = fullInfo
+                ? ` data-tooltip="${escapeHtml(fullInfo)}" data-tooltip-wrap`
+                : '';
             const layerCount = dataset.sources.length;
             // 从 manifest style 推断各图层几何类型（未加载也能显示构成）
             const counts = { point: 0, line: 0, polygon: 0 };
@@ -187,7 +257,7 @@ const UIManager = (function() {
             if (counts.polygon) parts.push(`面 ${counts.polygon}`);
             if (parts.length) composition += ` · ${parts.join(' · ')}`;
             return `
-                <div class="dataset-row${loaded ? ' is-loaded' : ''}" data-name="${safeName}">
+                <div class="dataset-row${loaded ? ' is-loaded' : ''}" data-name="${safeName}" data-info="${escapeHtml(fullInfo)}"${tooltipAttr}>
                     <span class="dataset-row-icon"><i class="fas fa-database"></i></span>
                     <div class="dataset-row-main">
                         <div class="dataset-row-name">${safeName}</div>
@@ -199,6 +269,35 @@ const UIManager = (function() {
                             ? '<i class="fas fa-check"></i> 已添加'
                             : '<i class="fas fa-plus"></i> 添加'}
                     </button>
+                </div>`;
+        };
+
+        // 按分类分组渲染（顺序来自 DataScanner.getCategories()）
+        const categories = DataScanner.getCategories();
+        list.innerHTML = categories.map(category => {
+            const safeCat = escapeHtml(category);
+            const items = DataScanner.getDatasetsByCategory(category);
+            const loadedCount = items.filter(d => loadedGroups.has(d.name)).length;
+            const allLoaded = loadedCount === items.length;
+            const collapsed = collapsedCategories.has(category);
+            return `
+                <div class="dataset-cat${collapsed ? ' collapsed' : ''}" data-category="${safeCat}">
+                    <div class="dataset-cat-header" data-tooltip="${collapsed ? '展开分组' : '折叠分组'}">
+                        <button type="button" class="dataset-cat-collapse" aria-label="${collapsed ? '展开' : '折叠'}${safeCat}">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <span class="dataset-cat-icon"><i class="fas ${categoryIcon(category)}"></i></span>
+                        <span class="dataset-cat-name">${safeCat}</span>
+                        <span class="dataset-cat-count">${loadedCount}/${items.length}</span>
+                        <button type="button" class="dataset-cat-pill${allLoaded ? ' is-loaded' : ''}" data-action="${allLoaded ? 'remove' : 'add'}" data-tooltip="${allLoaded ? '从图层中移除' : '添加到图层'}" aria-label="${allLoaded ? '移除' : '添加'}${safeCat}全部数据集">
+                            ${allLoaded
+                                ? '<i class="fas fa-check"></i> 已添加'
+                                : '<i class="fas fa-plus"></i> 添加'}
+                        </button>
+                    </div>
+                    <div class="dataset-cat-items">
+                        ${items.map(renderRow).join('')}
+                    </div>
                 </div>`;
         }).join('');
 
@@ -220,6 +319,44 @@ const UIManager = (function() {
                 }
             });
         });
+
+        // 分组头：折叠/展开（点标题区任意处）+ 整组添加/移除
+        list.querySelectorAll('.dataset-cat').forEach(groupEl => {
+            const category = groupEl.dataset.category;
+            const header = groupEl.querySelector('.dataset-cat-header');
+            const collapseBtn = groupEl.querySelector('.dataset-cat-collapse');
+            const pill = groupEl.querySelector('.dataset-cat-pill');
+
+            const toggleCollapse = () => {
+                const nowCollapsed = !groupEl.classList.contains('collapsed');
+                groupEl.classList.toggle('collapsed', nowCollapsed);
+                if (nowCollapsed) collapsedCategories.add(category);
+                else collapsedCategories.delete(category);
+                collapseBtn.setAttribute('aria-label', `${nowCollapsed ? '展开' : '折叠'}${category}`);
+                header.setAttribute('data-tooltip', nowCollapsed ? '展开分组' : '折叠分组');
+                persistCollapsedCategories();
+            };
+
+            header.addEventListener('click', event => {
+                // 整组按钮独立处理，不触发折叠
+                if (event.target.closest('.dataset-cat-pill')) return;
+                toggleCollapse();
+            });
+
+            pill.addEventListener('click', async () => {
+                const names = DataScanner.getDatasetsByCategory(category).map(d => d.name);
+                if (pill.dataset.action === 'add') {
+                    await addDatasets(names);
+                } else {
+                    const loaded = new Set(LayerManager.getLoadedGroupNames());
+                    names.forEach(name => { if (loaded.has(name)) LayerManager.removeDataset(name); });
+                    showToast(`已移除「${category}」全部数据集`, 'info');
+                }
+                renderDatasetView();
+                if (activePanelView === 'layers') updateLayerPanel();
+            });
+        });
+
         // 数据集视图统计随添加 / 移除实时刷新
         updatePanelStats();
         // R141：添加/移除后保留当前搜索过滤——重新渲染列表后立刻按既有 searchKeyword 重新套用过滤（输入框文本不丢失）
@@ -409,7 +546,8 @@ const UIManager = (function() {
             activeElement = element;
             activeTooltipEl = element;
             tooltip = document.createElement('div');
-            tooltip.className = 'app-tooltip';
+            // data-tooltip-wrap：长文本（如数据集完整介绍）用宽版换行气泡
+            tooltip.className = 'app-tooltip' + (element.hasAttribute('data-tooltip-wrap') ? ' app-tooltip--wrap' : '');
             tooltip.textContent = text;
             document.body.appendChild(tooltip);
 
@@ -420,6 +558,10 @@ const UIManager = (function() {
             let top = rect.top - tooltipRect.height - gap;
 
             if (top < 8) top = rect.bottom + gap;
+            // 上方放不下改放下方后，若下方也超出视口则贴住视口内（长文本气泡不会被截断）
+            if (top + tooltipRect.height > window.innerHeight - 8) {
+                top = Math.max(8, window.innerHeight - tooltipRect.height - 8);
+            }
             left = Math.max(8, Math.min(left, window.innerWidth - tooltipRect.width - 8));
             tooltip.style.left = `${left}px`;
             tooltip.style.top = `${top}px`;
@@ -1368,14 +1510,24 @@ const UIManager = (function() {
         if (activePanelView === 'datasets') {
             const list = document.getElementById('datasetList');
             if (!list) return;
-            const rows = list.querySelectorAll('.dataset-row');
             let visible = 0;
-            rows.forEach(row => {
-                const name = (row.dataset.name || '').toLowerCase();
-                const info = (row.querySelector('.dataset-row-info')?.textContent || '').toLowerCase();
-                const hit = !kw || name.includes(kw) || info.includes(kw);
-                row.style.display = hit ? '' : 'none';
-                if (hit) visible += 1;
+            // 分类分组感知：组内无命中则整组隐藏；搜索时强制展开分组，清空搜索后恢复折叠状态
+            list.querySelectorAll('.dataset-cat').forEach(groupEl => {
+                const category = groupEl.dataset.category || '';
+                const catName = category.toLowerCase();
+                let groupVisible = 0;
+                groupEl.querySelectorAll('.dataset-row').forEach(row => {
+                    const name = (row.dataset.name || '').toLowerCase();
+                    // 用 data-info（完整介绍）匹配，而非列表里那句摘要，避免摘要之外的词搜不到
+                    const info = (row.dataset.info || row.querySelector('.dataset-row-info')?.textContent || '').toLowerCase();
+                    // 分类名也算命中：搜「古代洛阳」可列出该组全部数据集
+                    const hit = !kw || name.includes(kw) || info.includes(kw) || catName.includes(kw);
+                    row.style.display = hit ? '' : 'none';
+                    if (hit) { visible += 1; groupVisible += 1; }
+                });
+                groupEl.style.display = (kw && groupVisible === 0) ? 'none' : '';
+                if (kw) groupEl.classList.remove('collapsed');
+                else groupEl.classList.toggle('collapsed', collapsedCategories.has(category));
             });
             let note = list.querySelector('.dataset-empty-filter');
             if (kw && visible === 0) {
