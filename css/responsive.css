@@ -1,0 +1,111 @@
+/**
+ * 响应式：@media 断点适配
+ *
+ * 由原单文件 css/style.css 按区块切分而来（R164）。
+ * 注意：本文件的引入顺序即级联顺序，调整顺序可能改变样式优先级。
+ */
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 280px;
+    }
+
+    /* 移动端侧边栏默认收起，作为左侧抽屉覆盖在地图之上 */
+    .sidebar {
+        transform: translateX(-100%);
+        width: min(85vw, 320px);
+        box-shadow: var(--shadow-xl);
+    }
+
+    .sidebar.sidebar--open {
+        transform: translateX(0);
+    }
+
+    .map-area {
+        left: 0;
+    }
+
+    .toast-container {
+        left: 16px;
+        right: 16px;
+        top: 58px;
+        max-width: calc(100% - 32px);
+    }
+
+    .panel-toolbar {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .toolbar-actions {
+        gap: 4px;
+    }
+
+    .toolbar-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    .layer-list-container {
+        padding: 0 8px 6px;
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar-header {
+        height: 52px;
+        padding: 0 12px;
+    }
+
+    .sidebar-header-actions .nav-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 14px;
+    }
+
+    /* 小屏：侧边栏为抽屉，收起由遮罩/工具栏图层按钮完成，头部收起按钮让位 */
+    #sidebarCollapse {
+        display: none;
+    }
+
+    .map-tools {
+        top: 10px;
+        right: 10px;
+        gap: 4px;
+    }
+
+    .map-tool-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 13px;
+    }
+
+    /* R105：窄屏下地点搜索图标按钮仍在工具栏左侧，展开框略窄 */
+    .place-search-floating {
+        top: 10px;
+        right: calc(10px + var(--map-tool-size) + 6px);
+    }
+
+    /* R121：减少搜索框展开宽度，避免与左侧 layerFab 贴得太近 */
+    .place-search-floating.open .place-search-input-wrap {
+        width: min(170px, calc(100vw - 180px));
+    }
+
+    .panel-toolbar {
+        flex-wrap: wrap;
+    }
+    .layer-item {
+        padding: 6px 10px;
+    }
+    .layer-item .layer-meta {
+        font-size: 10px;
+    }
+}
+
+/* R121：触控/窄屏设备上没有 mousemove，坐标控件永远显示占位符，直接隐藏以精简底部 HUD */
+@media (max-width: 480px), (pointer: coarse) {
+    .leaflet-bottom.leaflet-right .coordinate-control {
+        display: none !important;
+    }
+}

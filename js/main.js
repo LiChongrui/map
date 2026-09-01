@@ -39,7 +39,12 @@
             LayerManager.updateStats();
 
             if (datasets.length === 0) {
-                UIManager.showToast('未找到可用数据集', 'warning');
+                // file:// 直接打开时 fetch 被 CORS 拦截，数据集必然为空——给出启动指引而非空泛提示
+                if (location.protocol === 'file:') {
+                    UIWidgets.showStartupProtocolError();
+                } else {
+                    UIWidgets.showToast('未找到可用数据集', 'warning');
+                }
                 console.warn('[数据] 未配置任何数据集');
             } else if (defaultExists && !defaultLoaded) {
                 // 默认加载并缩放到该数据集范围（addDatasets 内部已 fitBounds）
@@ -49,7 +54,7 @@
             }
         } catch (error) {
             console.error('❌ 初始化失败:', error);
-            UIManager.showToast('❌ 初始化失败，请检查控制台', 'error');
+            UIWidgets.showToast('❌ 初始化失败，请检查控制台', 'error');
             UIManager.updateLayerPanel();
             LayerManager.updateStats();
         }

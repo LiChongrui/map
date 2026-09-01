@@ -49,45 +49,6 @@ const UIManager = (function() {
         } catch (error) { /* 存储失败不阻塞交互 */ }
     }
 
-    // 数据集介绍摘要：列表里只显示「一句话」，且必须单行显示，完整介绍交给悬停提示。
-    // 单行容量：380px 面板下可用约 217px，12px 字体 ≈ 18 个中文字，故上限取 17 留安全余量。
-    const INFO_SUMMARY_MAX = 17;
-
-    // 超过单行容量时逐级压缩：去括号补充 → 顿号列举缩为「首项+等」→ 只用首分句 → 硬截断
-    function compressInfo(summary, clauses, maxLen) {
-        const steps = [];
-        // 1) 去掉括号及其中的补充说明：（隋称显仁宫苑）/ (二里头遗址) 等
-        const noParen = summary.replace(/[（(][^（()）]*[）)]/g, '').replace(/\s{2,}/g, ' ').trim();
-        if (noParen && noParen.length !== summary.length) steps.push(noParen);
-        // 2) 顿号列举（3 项以上）缩为「首项+等」：东汉、曹魏、西晋、北魏等 → 东汉等
-        const source = steps[0] || summary;
-        const condensed = source.replace(/([^、，,；;]{1,10})(?:、[^、，,；;]{1,10}){2,}(?=等)/g, '$1');
-        if (condensed !== source) steps.push(condensed);
-        // 3) 退回只用第一个分句
-        if (clauses[0] && clauses[0] !== summary) steps.push(clauses[0]);
-        // 按压缩强度依次取第一个能放进单行的结果（越靠前保留的信息越多）
-        for (const candidate of steps) {
-            if (candidate && candidate.length <= maxLen) return candidate;
-        }
-        // 都不够短：取最短候选再硬截断（正常情况下走不到）
-        const shortest = steps.concat(summary).sort((a, b) => a.length - b.length)[0] || summary;
-        return shortest.length > maxLen ? shortest.slice(0, maxLen) + '…' : shortest;
-    }
-
-    function summarizeInfo(info) {
-        const text = String(info || '').trim();
-        if (!text) return '';
-        const firstSentence = text.split(/[。！？!?]/)[0].trim();
-        if (!firstSentence) return text;
-        if (firstSentence.length <= 14) return firstSentence + '。';
-        const clauses = firstSentence.split(/[，,；;]/).map(part => part.trim()).filter(Boolean);
-        let summary = clauses[0] || firstSentence;
-        // 首分句太短（<12 字）并上第二分句，避免出现「洛阳盆地古代水系」这种残句
-        if (summary.length < 12 && clauses.length > 1) summary = clauses.slice(0, 2).join('，');
-        if (summary.length > INFO_SUMMARY_MAX) summary = compressInfo(summary, clauses, INFO_SUMMARY_MAX);
-        return summary;
-    }
-
     // 分类图标：按类别给一个直观图形（缺省用文件夹）
     function categoryIcon(category) {
         if (/洛阳|北京/.test(category)) return 'fa-landmark';
@@ -105,7 +66,13 @@ const UIManager = (function() {
     function init() {
         bindEvents();
         initSortable();
-        initTooltips();
+        UIWidgets.initTooltips();
+        // 弹窗打开前先收起面板内的浮层菜单（分组「更多」/ 底图 / 搜索），
+        // 由本面板注入，UIWidgets 自身不感知这些业务浮层
+        UIWidgets.setBeforeOpenHook(() => {
+            closeAllGroupMoreMenus();
+            closeAllMapToolMenus();
+        });
         document.addEventListener('fullscreenchange', syncFullscreenState);
 
         let savedTheme = null;
@@ -176,11 +143,6 @@ const UIManager = (function() {
     }
 
     // ---------- 工具 ----------
-    function escapeHtml(value) {
-        return String(value ?? '').replace(/[&<>'"]/g, character => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-        }[character]));
-    }
 
     function getCurrentLayers() {
         return LayerManager.getAllLayers();
@@ -234,12 +196,11 @@ const UIManager = (function() {
         // 单行数据集渲染（分类分组内复用）
         const renderRow = dataset => {
             const loaded = loadedGroups.has(dataset.name);
-            const safeName = escapeHtml(dataset.name);
+            const safeName = ColorUtils.escapeHtml(dataset.name);
+            // 列表不再显示介绍文字，完整介绍由悬停提示承载（data-tooltip-wrap → 宽版换行气泡）
             const fullInfo = dataset.info || '';
-            // 列表只显示一句话摘要；完整介绍放到悬停提示（data-tooltip-wrap → 宽版换行气泡）
-            const info = fullInfo ? escapeHtml(summarizeInfo(fullInfo)) : '暂无说明';
             const tooltipAttr = fullInfo
-                ? ` data-tooltip="${escapeHtml(fullInfo)}" data-tooltip-wrap`
+                ? ` data-tooltip="${ColorUtils.escapeHtml(fullInfo)}" data-tooltip-wrap`
                 : '';
             const layerCount = dataset.sources.length;
             // 从 manifest style 推断各图层几何类型（未加载也能显示构成）
@@ -257,11 +218,10 @@ const UIManager = (function() {
             if (counts.polygon) parts.push(`面 ${counts.polygon}`);
             if (parts.length) composition += ` · ${parts.join(' · ')}`;
             return `
-                <div class="dataset-row${loaded ? ' is-loaded' : ''}" data-name="${safeName}" data-info="${escapeHtml(fullInfo)}"${tooltipAttr}>
+                <div class="dataset-row${loaded ? ' is-loaded' : ''}" data-name="${safeName}" data-info="${ColorUtils.escapeHtml(fullInfo)}"${tooltipAttr}>
                     <span class="dataset-row-icon"><i class="fas fa-database"></i></span>
                     <div class="dataset-row-main">
                         <div class="dataset-row-name">${safeName}</div>
-                        <div class="dataset-row-info">${info}</div>
                         <div class="dataset-row-meta">${composition}</div>
                     </div>
                     <button type="button" class="ds-pill${loaded ? ' is-loaded' : ''}" data-action="${loaded ? 'remove' : 'add'}" data-tooltip="${loaded ? '从图层中移除' : '添加到图层'}" aria-label="${loaded ? '移除' : '添加'}${safeName}">
@@ -275,7 +235,7 @@ const UIManager = (function() {
         // 按分类分组渲染（顺序来自 DataScanner.getCategories()）
         const categories = DataScanner.getCategories();
         list.innerHTML = categories.map(category => {
-            const safeCat = escapeHtml(category);
+            const safeCat = ColorUtils.escapeHtml(category);
             const items = DataScanner.getDatasetsByCategory(category);
             const loadedCount = items.filter(d => loadedGroups.has(d.name)).length;
             const allLoaded = loadedCount === items.length;
@@ -313,7 +273,7 @@ const UIManager = (function() {
                     if (activePanelView === 'layers') updateLayerPanel();
                 } else {
                     LayerManager.removeDataset(name);
-                    showToast(`已移除「${name}」`, 'info');
+                    UIWidgets.showToast(`已移除「${name}」`, 'info');
                     renderDatasetView();
                     if (activePanelView === 'layers') updateLayerPanel();
                 }
@@ -350,7 +310,7 @@ const UIManager = (function() {
                 } else {
                     const loaded = new Set(LayerManager.getLoadedGroupNames());
                     names.forEach(name => { if (loaded.has(name)) LayerManager.removeDataset(name); });
-                    showToast(`已移除「${category}」全部数据集`, 'info');
+                    UIWidgets.showToast(`已移除「${category}」全部数据集`, 'info');
                 }
                 renderDatasetView();
                 if (activePanelView === 'layers') updateLayerPanel();
@@ -430,7 +390,7 @@ const UIManager = (function() {
         const all = DataScanner.getDatasets().map(d => d.name);
         const loaded = new Set(LayerManager.getLoadedGroupNames());
         const toAdd = all.filter(n => !loaded.has(n));
-        if (toAdd.length === 0) { showToast('所有数据集已添加', 'info'); return; }
+        if (toAdd.length === 0) { UIWidgets.showToast('所有数据集已添加', 'info'); return; }
         await addDatasets(toAdd);
         renderDatasetView();
         if (activePanelView === 'layers') updateLayerPanel();
@@ -438,8 +398,8 @@ const UIManager = (function() {
 
     async function datasetRemoveAll() {
         const loaded = LayerManager.getLoadedGroupNames();
-        if (loaded.length === 0) { showToast('当前没有已添加的数据集', 'info'); return; }
-        const ok = await showAppModal({
+        if (loaded.length === 0) { UIWidgets.showToast('当前没有已添加的数据集', 'info'); return; }
+        const ok = await UIWidgets.showAppModal({
             icon: 'fa-trash-can',
             title: '移除全部数据集',
             message: `将从地图移除全部 ${loaded.length} 个已添加数据集，其图层将从地图与列表中移除，可随时重新添加。`,
@@ -448,7 +408,7 @@ const UIManager = (function() {
         });
         if (!ok) return;
         loaded.forEach(name => LayerManager.removeDataset(name));
-        showToast(`已移除 ${loaded.length} 个数据集`, 'info');
+        UIWidgets.showToast(`已移除 ${loaded.length} 个数据集`, 'info');
         renderDatasetView();
         if (activePanelView === 'layers') updateLayerPanel();
     }
@@ -514,77 +474,14 @@ const UIManager = (function() {
             // 记录「最新添加」的数据集，供折叠逻辑只保留它展开（需在 finalize 之后）
             lastAddedGroup = names[names.length - 1];
             if (loaded > 0) {
-                showToast(`已加载 ${loaded} 个数据集`, 'success');
+                UIWidgets.showToast(`已加载 ${loaded} 个数据集`, 'success');
                 // R143：分组 > 6 仅展开最新添加的数据集；≤ 6 全部展开
                 autoCollapseGroupsIfMany();
             }
-            if (failedNames.length > 0) showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
+            if (failedNames.length > 0) UIWidgets.showToast(`${failedNames.join('、')} 部分图层加载失败`, 'warning');
         } finally {
             LayerManager.setLoading(false, label);
         }
-    }
-
-    function initTooltips() {
-        let tooltip = null;
-        let activeElement = null;
-        // R88：记录当前正在显示提示的 [data-tooltip] 元素，避免在同一元素与其子节点间移动时反复销毁重建（悬停闪烁的根因）
-        let activeTooltipEl = null;
-
-        const hideTooltip = function() {
-            if (tooltip) tooltip.remove();
-            tooltip = null;
-            activeElement = null;
-            activeTooltipEl = null;
-        };
-
-        const showTooltip = function(element) {
-            const text = element.dataset.tooltip;
-            if (!text) return;
-            // 同一元素已在显示则不再重建，杜绝闪烁
-            if (activeTooltipEl === element) return;
-            hideTooltip();
-            activeElement = element;
-            activeTooltipEl = element;
-            tooltip = document.createElement('div');
-            // data-tooltip-wrap：长文本（如数据集完整介绍）用宽版换行气泡
-            tooltip.className = 'app-tooltip' + (element.hasAttribute('data-tooltip-wrap') ? ' app-tooltip--wrap' : '');
-            tooltip.textContent = text;
-            document.body.appendChild(tooltip);
-
-            const rect = element.getBoundingClientRect();
-            const tooltipRect = tooltip.getBoundingClientRect();
-            const gap = 8;
-            let left = rect.left + (rect.width - tooltipRect.width) / 2;
-            let top = rect.top - tooltipRect.height - gap;
-
-            if (top < 8) top = rect.bottom + gap;
-            // 上方放不下改放下方后，若下方也超出视口则贴住视口内（长文本气泡不会被截断）
-            if (top + tooltipRect.height > window.innerHeight - 8) {
-                top = Math.max(8, window.innerHeight - tooltipRect.height - 8);
-            }
-            left = Math.max(8, Math.min(left, window.innerWidth - tooltipRect.width - 8));
-            tooltip.style.left = `${left}px`;
-            tooltip.style.top = `${top}px`;
-        };
-
-        document.addEventListener('pointerover', event => {
-            const element = event.target.closest?.('[data-tooltip]');
-            if (element) showTooltip(element);
-        });
-        document.addEventListener('pointerout', event => {
-            if (!activeTooltipEl) return;
-            // 仅当指针离开当前提示元素、且未进入同一提示元素（含其子节点）时才隐藏
-            const to = (event.relatedTarget && event.relatedTarget.closest)
-                ? event.relatedTarget.closest('[data-tooltip]') : null;
-            if (to !== activeTooltipEl) hideTooltip();
-        });
-        document.addEventListener('focusin', event => {
-            const element = event.target.closest?.('[data-tooltip]');
-            if (element) showTooltip(element);
-        });
-        document.addEventListener('focusout', hideTooltip);
-        window.addEventListener('resize', hideTooltip);
-        window.addEventListener('scroll', hideTooltip, true);
     }
 
     function initSortable() {
@@ -760,7 +657,7 @@ const UIManager = (function() {
         setActivePanelView(activePanelView);
         // R124：面板底部「关于项目 / 关于作者」两个独立入口
         const aboutAuthorBtn = document.getElementById('aboutAuthorBtn');
-        if (aboutAuthorBtn) aboutAuthorBtn.addEventListener('click', showAuthorModal);
+        if (aboutAuthorBtn) aboutAuthorBtn.addEventListener('click', UIWidgets.showAuthorModal);
 
         const themeBtn = document.getElementById('toggleTheme');
         if (themeBtn) {
@@ -863,15 +760,15 @@ const UIManager = (function() {
             async function render(keyword) {
                 const value = String(keyword || '').trim();
                 if (!value) { hideResults(); return; }
-                const index = await buildSearchIndex();
+                const index = await PlaceSearch.buildSearchIndex();
                 // 异步竞态防护：索引建好前关键词已被清空/更换则放弃本次渲染
                 if (inputEl.value.trim() !== value) return;
-                const matched = rankPlaceMatches(index, value, 8);
+                const matched = PlaceSearch.rankPlaceMatches(index, value, 8);
                 if (!matched.length) { hideResults(); return; }
                 resultsEl.innerHTML =
                     `<div class="place-search-head">地点 · ${matched.length} 个结果（点击定位）</div>` +
                     matched.map((m, i) =>
-                        `<div class="place-search-item" data-idx="${i}" role="option"><i class="fas fa-map-marker-alt"></i><span class="place-search-name">${escapeHtml(m.name)}</span><span class="place-search-group">${escapeHtml(m.group)}</span></div>`
+                        `<div class="place-search-item" data-idx="${i}" role="option"><i class="fas fa-map-marker-alt"></i><span class="place-search-name">${ColorUtils.escapeHtml(m.name)}</span><span class="place-search-group">${ColorUtils.escapeHtml(m.group)}</span></div>`
                     ).join('');
                 resultsEl.classList.add('open');
                 resultsEl.querySelectorAll('.place-search-item').forEach(item => {
@@ -951,7 +848,7 @@ const UIManager = (function() {
             datasetVisToggle.addEventListener('click', function() {
                 const allLayers = getCurrentLayers();
                 if (allLayers.size === 0) {
-                    showToast('暂无数据集', 'info');
+                    UIWidgets.showToast('暂无数据集', 'info');
                     return;
                 }
                 const anyHidden = [...new Set([...allLayers.values()].map(i => i.config.group))].some(g => LayerManager.isDatasetHidden(g));
@@ -959,12 +856,12 @@ const UIManager = (function() {
                     LayerManager.showAllDatasets();
                     updateButtonsState();
                     syncDatasetHiddenStates();
-                    showToast('✅ 已显示所有数据集', 'success');
+                    UIWidgets.showToast('✅ 已显示所有数据集', 'success');
                 } else {
                     LayerManager.hideAllDatasets();
                     updateButtonsState();
                     syncDatasetHiddenStates();
-                    showToast('⬜ 已隐藏所有数据集', 'info');
+                    UIWidgets.showToast('⬜ 已隐藏所有数据集', 'info');
                 }
             });
         }
@@ -974,7 +871,7 @@ const UIManager = (function() {
             zoomBtn.addEventListener('click', function() {
                 const allLayers = getCurrentLayers();
                 if (allLayers.size === 0) {
-                    showToast('暂无图层数据', 'info');
+                    UIWidgets.showToast('暂无图层数据', 'info');
                     return;
                 }
                 const bounds = L.latLngBounds();
@@ -988,9 +885,9 @@ const UIManager = (function() {
                 }
                 if (hasValid) {
                     MapManager.fitBounds(bounds);
-                    showToast('已缩放至全部可见图层', 'success');
+                    UIWidgets.showToast('已缩放至全部可见图层', 'success');
                 } else {
-                    showToast('没有可见的数据图层', 'info');
+                    UIWidgets.showToast('没有可见的数据图层', 'info');
                 }
             });
         }
@@ -1062,11 +959,11 @@ const UIManager = (function() {
         // R99：单选列表样式——左侧圆点 + 类型图标 + 名称，与系统原生 radio 菜单一致
         menu.innerHTML = Object.keys(layers).map(name => {
             const cfg = layers[name] || {};
-            const iconClass = cfg.icon ? escapeHtml(cfg.icon) : 'fa-map';
-            return `<div class="base-layer-tool-option" data-layer="${escapeHtml(name)}" role="radio" aria-checked="false">
+            const iconClass = cfg.icon ? ColorUtils.escapeHtml(cfg.icon) : 'fa-map';
+            return `<div class="base-layer-tool-option" data-layer="${ColorUtils.escapeHtml(name)}" role="radio" aria-checked="false">
                 <span class="base-layer-radio" aria-hidden="true"></span>
                 <i class="fas ${iconClass} base-layer-icon" aria-hidden="true"></i>
-                <span class="base-layer-name">${escapeHtml(name)}</span>
+                <span class="base-layer-name">${ColorUtils.escapeHtml(name)}</span>
             </div>`;
         }).join('');
 
@@ -1162,16 +1059,16 @@ const UIManager = (function() {
 
     function locateUser() {
         if (!navigator.geolocation) {
-            showToast('您的浏览器不支持地理定位', 'warning');
+            UIWidgets.showToast('您的浏览器不支持地理定位', 'warning');
             return;
         }
         // R89：再次点击 = 取消定位（移除标记 + 取消图标高亮）
         if (userLocationMarker) {
             clearUserLocationMarker();
-            showToast('已取消定位', 'info');
+            UIWidgets.showToast('已取消定位', 'info');
             return;
         }
-        showToast('正在定位您的位置…', 'info', 2000);
+        UIWidgets.showToast('正在定位您的位置…', 'info', 2000);
         navigator.geolocation.getCurrentPosition(
             pos => {
                 const { latitude, longitude } = pos.coords;
@@ -1188,7 +1085,7 @@ const UIManager = (function() {
                 // R89：显示定位时给按钮加 .active 背景，作为「正在定位」状态区分
                 const btn = document.getElementById('mapToolLocate');
                 if (btn) btn.classList.add('active');
-                showToast(`已定位到 经度 ${longitude.toFixed(3)}°，纬度 ${latitude.toFixed(3)}°`, 'success');
+                UIWidgets.showToast(`已定位到 经度 ${longitude.toFixed(3)}°，纬度 ${latitude.toFixed(3)}°`, 'success');
                 // 飞行到达后再注册「下一次地图交互即移除」监听，避免 flyTo 自身的 zoom 动画误触发移除
                 // 定位：将定位点居中到可视范围中心，并缩放到合适层级（封顶 15，与地点搜索一致）；
                 // 已放大时不回缩（取当前缩放与目标的较大值），仅平移居中。
@@ -1206,164 +1103,21 @@ const UIManager = (function() {
                     map.on('moveend', userLocationMoveHandler);
                 });
             },
-            () => showToast('定位失败，请检查定位权限', 'error'),
+            () => UIWidgets.showToast('定位失败，请检查定位权限', 'error'),
             { enableHighAccuracy: true, timeout: 10000 }
         );
     }
 
-    // 地点搜索：本地地名索引（覆盖「全部数据集」，含未加载的图层）。
-    // 不再依赖被网络拦截的在线地理编码（Nominatim），保证离线 / 国内环境也可用。
-    let searchIndex = null;        // 已建立的地名索引
-    let searchIndexPromise = null; // 构建中的 Promise（避免重复拉取）
-
-    // 从要素属性中挑选最适合做名称的字段值（与图层标注挑选逻辑一致：名称类字段优先）
-    function pickSearchLabel(props) {
-        if (!props) return '';
-        const pri = ['name', '名称', '地名', 'label', 'title', '桥', '里坊', '州', '府', '路', '道'];
-        for (const k of pri) {
-            const v = props[k];
-            if (v !== undefined && v !== null && String(v).trim()) return String(v).trim();
-        }
-        for (const v of Object.values(props)) {
-            if (v !== undefined && v !== null && String(v).trim()) return String(v).trim();
-        }
-        return '';
-    }
-
-    // 由要素几何计算其经纬度边界（用于点击结果缩放到该要素，无需先加载数据集）
-    function featureBounds(geometry) {
-        if (!geometry) return null;
-        const bounds = L.latLngBounds();
-        const add = ll => { if (ll && Number.isFinite(ll[0]) && Number.isFinite(ll[1])) bounds.extend([ll[1], ll[0]]); };
-        const walk = coord => {
-            if (coord && typeof coord[0] === 'number') add(coord);
-            else if (Array.isArray(coord)) coord.forEach(walk);
-        };
-        if (geometry.type === 'GeometryCollection') {
-            (geometry.geometries || []).forEach(sub => {
-                const b = featureBounds(sub);
-                if (b) bounds.extend(b);
-            });
-        } else if (geometry.coordinates) {
-            walk(geometry.coordinates);
-        }
-        return bounds.isValid() ? bounds : null;
-    }
-
-    // 构建地名索引：拉取所有数据集的 geojson，提取每个要素的名称与边界并缓存
-    let fileProtocolWarned = false;
-    async function buildSearchIndex() {
-        if (searchIndex) return searchIndex;
-        if (searchIndexPromise) return searchIndexPromise;
-        searchIndexPromise = (async () => {
-            const items = [];
-            const datasets = (typeof DataScanner !== 'undefined' && DataScanner.getDatasets) ? DataScanner.getDatasets() : [];
-            const sources = [];
-            datasets.forEach(ds => (ds.sources || []).forEach(src => sources.push({ src, group: ds.name })));
-            // R97：数据集清单尚未就绪（页面刚打开、扫描未完成）时不可缓存空索引——
-            // 否则首次搜索若早于扫描完成，空结果会被永久缓存，之后所有搜索都「无结果」
-            if (sources.length === 0) {
-                searchIndex = null;
-                searchIndexPromise = null;
-                return [];
-            }
-            // R97：file:// 打开时 fetch 会被浏览器拦截，索引必然为空——给出明确提示而非静默失败
-            if (location.protocol === 'file:' && !fileProtocolWarned) {
-                fileProtocolWarned = true;
-                showToast('⚠️ 当前以文件方式打开，搜索功能不可用——请通过本地服务器访问', 'warning');
-            }
-            await Promise.all(sources.map(async ({ src, group }) => {
-                try {
-                    // R97：单文件 8s 超时——防止个别请求挂起拖住 Promise.all 导致索引永远建不完
-                    const resp = await fetch(src.url, { signal: AbortSignal.timeout(8000) });
-                    if (!resp.ok) return;
-                    const gj = await resp.json();
-                    (gj.features || []).forEach(f => {
-                        const props = f.properties || {};
-                        const name = pickSearchLabel(props);
-                        if (!name) return;
-                        const bounds = featureBounds(f.geometry);
-                        if (!bounds) return;
-                        // R93：hay 纳入图层名与数据集名，支持「城门」「治所」「西苑」等按图层/数据集搜索
-                        const hay = [...Object.values(props), src.name || '', group]
-                            .map(v => String(v ?? '')).join(' ').toLowerCase();
-                        // R106：保留原始要素对象，供点击搜索结果时在地图上高亮其真实几何并弹出属性
-                        items.push({ name, group, layerName: src.name, bounds, hay, feature: f });
-                    });
-                } catch (e) { /* 单个文件失败不影响其它 */ }
-            }));
-            const seen = new Set();
-            const deduped = items.filter(it => {
-                const k = it.group + '|' + it.name + '|' + it.layerName;
-                if (seen.has(k)) return false;
-                seen.add(k);
-                return true;
-            });
-            // R97：全部文件拉取失败（如以 file:// 打开 / 服务器临时故障）时索引为空——
-            // 不缓存空结果，下次搜索自动重试；否则一次网络故障会永久杀死搜索功能
-            if (deduped.length === 0) {
-                searchIndex = null;
-                searchIndexPromise = null;
-                return [];
-            }
-            searchIndex = deduped;
-            return searchIndex;
-        })();
-        return searchIndexPromise;
-    }
-
-    // R97：地名匹配分级（供地图搜索与侧边栏双搜共用）——
-    // 名称精确 > 名称前缀 > 名称包含 > 全属性（含图层名/数据集名）包含；同级内名称短者优先
-    function rankPlaceMatches(index, keyword, limit) {
-        const lower = String(keyword || '').trim().toLowerCase();
-        if (!lower) return [];
-        const rank = it => {
-            const n = it.name.toLowerCase();
-            if (n === lower) return 0;
-            if (n.startsWith(lower)) return 1;
-            if (n.includes(lower)) return 2;
-            if (it.hay && it.hay.includes(lower)) return 3;
-            return 4;
-        };
-        return index.filter(it => rank(it) < 4)
-            .sort((a, b) => rank(a) - rank(b) || a.name.length - b.name.length)
-            .slice(0, limit);
-    }
-
-    // ================================================================
-    // updateLayerPanel - 去掉状态文字和删除按钮
-    // ================================================================
-
     // hex → rgba（用于图例还原颜色不透明度）
-    function hexToRgba(hex, alpha) {
-        const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-        if (!match) return hex;
-        const int = parseInt(match[1], 16);
-        const r = (int >> 16) & 255, g = (int >> 8) & 255, b = int & 255;
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
-    // 不透明度钳制到 0~1（非法值按 1 处理）
-    function clamp01(value) {
-        const num = Number(value);
-        if (!Number.isFinite(num)) return 1;
-        return Math.min(1, Math.max(0, num));
-    }
-
-    // 按当前样式生成图层图例（与地图显示严格对应：点大小/边线宽、线宽、填充/描边/边线不透明度）
-    // 注意：不加投影阴影——阴影会让细线/小点看起来比地图实际渲染的更大
-    // R111：图例色块尺寸固定——无论样式如何（线宽/点大小/描边），其在图层元素中占用的宽高不变；
-    // 颜色仍如实反映样式，但符号尺寸被归一化（点 12、线 16×3、面/混合由 CSS 固定），不再缩放。
-    // R111/R113：图例「块」元素固定 24×28（CSS），内部符号为固定好看的表示（不随样式大小变化），避免布局抖动
     function legendSwatchHTML(style, type) {
         if (!style) return '';
         const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Number(v) || 0));
-        const pointColor = hexToRgba(style.pointColor || '#4f6ef7', clamp01(style.pointOpacity ?? 1));
-        const pointStroke = hexToRgba(style.pointStrokeColor || '#ffffff', clamp01(style.pointStrokeOpacity ?? 1));
-        const lineColor = hexToRgba(style.lineColor || '#4f6ef7', clamp01(style.lineOpacity ?? 0.9));
+        const pointColor = ColorUtils.hexToRgba(style.pointColor || '#4f6ef7', ColorUtils.clamp01(style.pointOpacity ?? 1));
+        const pointStroke = ColorUtils.hexToRgba(style.pointStrokeColor || '#ffffff', ColorUtils.clamp01(style.pointStrokeOpacity ?? 1));
+        const lineColor = ColorUtils.hexToRgba(style.lineColor || '#4f6ef7', ColorUtils.clamp01(style.lineOpacity ?? 0.9));
         const fillColor = style.fillColor || '#4f6ef7';
-        const fillOpacity = clamp01(style.fillOpacity ?? 0.35);
-        const strokeColor = hexToRgba(style.strokeColor || fillColor, clamp01(style.strokeOpacity ?? 0.95));
+        const fillOpacity = ColorUtils.clamp01(style.fillOpacity ?? 0.35);
+        const strokeColor = ColorUtils.hexToRgba(style.strokeColor || fillColor, ColorUtils.clamp01(style.strokeOpacity ?? 0.95));
         // R114：图例「块」始终固定 24×28（容器 overflow:hidden），内部符号按设置值缩放但被钳制在块内，
         // 因此改变样式时块占用尺寸不变、布局不抖动；点直径随 pointSize、线高随 lineWidth。
         if (type === 'point') {
@@ -1372,18 +1126,18 @@ const UIManager = (function() {
             const stroke = Math.max(0, Number(style.pointStrokeWidth) || 0);
             const d = clamp((Number(style.pointSize) || 8) + stroke * 2, 4, 24); // 封顶 24 适配 24 宽块
             const sw = clamp(stroke, 0, Math.max(0, d / 2 - 0.5));               // 边线不超出圆点
-            return `<span class="swatch swatch--point" style="width:${d}px;height:${d}px;background:${escapeHtml(pointColor)};box-shadow:inset 0 0 0 ${sw}px ${escapeHtml(pointStroke)};"></span>`;
+            return `<span class="swatch swatch--point" style="width:${d}px;height:${d}px;background:${ColorUtils.escapeHtml(pointColor)};box-shadow:inset 0 0 0 ${sw}px ${ColorUtils.escapeHtml(pointStroke)};"></span>`;
         }
         if (type === 'line') {
             const lh = clamp(style.lineWidth || 2, 1.5, 24);       // 高度随线宽，封顶 24 适配 28 高块
-            return `<span class="swatch swatch--line" style="width:18px;height:${lh}px;background:${escapeHtml(lineColor)};"></span>`;
+            return `<span class="swatch swatch--line" style="width:18px;height:${lh}px;background:${ColorUtils.escapeHtml(lineColor)};"></span>`;
         }
         // 面：沿用 R111 好看的固定符号（18×14 圆角），描边封顶 3px
         if (type === 'polygon') {
             const strokeWidth = Math.min(3, Math.max(0, Number(style.strokeWidth) || 0));
-            return `<span class="swatch swatch--polygon" style="background:${escapeHtml(hexToRgba(fillColor, fillOpacity))};box-shadow:inset 0 0 0 ${strokeWidth}px ${escapeHtml(strokeColor)};"></span>`;
+            return `<span class="swatch swatch--polygon" style="background:${ColorUtils.escapeHtml(ColorUtils.hexToRgba(fillColor, fillOpacity))};box-shadow:inset 0 0 0 ${strokeWidth}px ${ColorUtils.escapeHtml(strokeColor)};"></span>`;
         }
-        return `<span class="swatch swatch--mixed" style="background:linear-gradient(135deg, ${escapeHtml(hexToRgba(fillColor, fillOpacity))} 0 34%, ${escapeHtml(lineColor)} 34% 67%, ${escapeHtml(pointColor)} 67% 100%);border:1px solid ${escapeHtml(strokeColor)};"></span>`;
+        return `<span class="swatch swatch--mixed" style="background:linear-gradient(135deg, ${ColorUtils.escapeHtml(ColorUtils.hexToRgba(fillColor, fillOpacity))} 0 34%, ${ColorUtils.escapeHtml(lineColor)} 34% 67%, ${ColorUtils.escapeHtml(pointColor)} 67% 100%);border:1px solid ${ColorUtils.escapeHtml(strokeColor)};"></span>`;
     }
 
     // 渲染单个图层条目（所有动态文本/属性均已转义）
@@ -1394,8 +1148,8 @@ const UIManager = (function() {
         const isVisible = visible === true;
         const geometry = getGeometrySummary(data);
         const labelsEnabled = isVisible && !!labelField;
-        const safeId = escapeHtml(id);
-        const safeName = escapeHtml(name);
+        const safeId = ColorUtils.escapeHtml(id);
+        const safeName = ColorUtils.escapeHtml(name);
         const style = LayerManager.getLayerStyle(id);
         const highlighted = LayerManager.getHighlightedLayerId() === id;
         const datasetHidden = LayerManager.isDatasetHidden(info.config.group || '未分组');
@@ -1518,8 +1272,8 @@ const UIManager = (function() {
                 let groupVisible = 0;
                 groupEl.querySelectorAll('.dataset-row').forEach(row => {
                     const name = (row.dataset.name || '').toLowerCase();
-                    // 用 data-info（完整介绍）匹配，而非列表里那句摘要，避免摘要之外的词搜不到
-                    const info = (row.dataset.info || row.querySelector('.dataset-row-info')?.textContent || '').toLowerCase();
+                    // 用 data-info（完整介绍）匹配：列表已不再显示介绍文字，靠它保证介绍里的词仍可搜到
+                    const info = (row.dataset.info || '').toLowerCase();
                     // 分类名也算命中：搜「古代洛阳」可列出该组全部数据集
                     const hit = !kw || name.includes(kw) || info.includes(kw) || catName.includes(kw);
                     row.style.display = hit ? '' : 'none';
@@ -1649,9 +1403,9 @@ const UIManager = (function() {
         });
         if (hasValid) {
             MapManager.fitBounds(bounds);
-            showToast(`已缩放至「${name}」可见图层`, 'success');
+            UIWidgets.showToast(`已缩放至「${name}」可见图层`, 'success');
         } else {
-            showToast(`「${name}」暂无可见图层`, 'info');
+            UIWidgets.showToast(`「${name}」暂无可见图层`, 'info');
         }
     }
 
@@ -1721,11 +1475,11 @@ const UIManager = (function() {
     async function downloadLayer(id) {
         const info = LayerManager.getLayerInfo(id);
         if (!info || !info.data || !Array.isArray(info.data.features)) {
-            showToast('该图层无数据可下载', 'info');
+            UIWidgets.showToast('该图层无数据可下载', 'info');
             return;
         }
         const name = info.config.name || id;
-        const ok = await showAppModal({
+        const ok = await UIWidgets.showAppModal({
             icon: 'fa-download',
             title: '下载图层数据',
             message: `确认下载「${name}」的 ${info.data.features.length} 个要素数据（GeoJSON）？`,
@@ -1743,7 +1497,7 @@ const UIManager = (function() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showToast(`已导出「${name}」${info.data.features.length} 个要素`, 'success');
+        UIWidgets.showToast(`已导出「${name}」${info.data.features.length} 个要素`, 'success');
     }
 
     function updateLayerPanel() {
@@ -1786,7 +1540,7 @@ const UIManager = (function() {
         let html = '';
         for (const group of groups) {
             const collapsed = collapsedGroups.has(group.name);
-            const safeName = escapeHtml(group.name);
+            const safeName = ColorUtils.escapeHtml(group.name);
             html += `
                 <div class="layer-group${collapsed ? ' collapsed' : ''}" data-group="${safeName}">
                     <div class="layer-group-header" data-tooltip="${collapsed ? '展开分组' : '折叠分组'}">
@@ -1863,7 +1617,7 @@ const UIManager = (function() {
                     updateButtonsState();
                     syncDatasetHiddenStates();
                     const hidden = LayerManager.isDatasetHidden(name);
-                    showToast(hidden ? `已隐藏数据集「${name}」` : `已显示数据集「${name}」`, hidden ? 'info' : 'success');
+                    UIWidgets.showToast(hidden ? `已隐藏数据集「${name}」` : `已显示数据集「${name}」`, hidden ? 'info' : 'success');
                 });
             }
 
@@ -1896,7 +1650,7 @@ const UIManager = (function() {
                 closeAllGroupMoreMenus();
                 const dataset = DataScanner.getDataset(name);
                 const info = dataset && dataset.info ? dataset.info : '暂无介绍';
-                showAppModal({ icon: 'fa-circle-info', title: name, message: info, confirmText: '知道了', cancelText: '' });
+                UIWidgets.showAppModal({ icon: 'fa-circle-info', title: name, message: info, confirmText: '知道了', cancelText: '' });
             });
             groupEl.querySelector('.layer-group-labels')?.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -1905,12 +1659,12 @@ const UIManager = (function() {
                 // 刷新分组头菜单项文字与图层行按钮状态
                 updateLayerPanel();
                 const anyVisible = [...LayerManager.getLayersByGroup(name).values()].some(info => info.labelsVisible);
-                showToast(`已${anyVisible ? '显示' : '隐藏'}「${name}」全部标注`, anyVisible ? 'success' : 'info');
+                UIWidgets.showToast(`已${anyVisible ? '显示' : '隐藏'}「${name}」全部标注`, anyVisible ? 'success' : 'info');
             });
             groupEl.querySelector('.more-remove')?.addEventListener('click', async function(e) {
                 e.stopPropagation();
                 closeAllGroupMoreMenus();
-                const ok = await showAppModal({
+                const ok = await UIWidgets.showAppModal({
                     icon: 'fa-trash-can',
                     title: '移除数据集',
                     message: `确定移除数据集「${name}」吗？\n其图层将从地图与列表中移除，可随时重新添加。`,
@@ -1919,7 +1673,7 @@ const UIManager = (function() {
                 });
                 if (!ok) return;
                 if (LayerManager.removeDataset(name)) {
-                    showToast(`已移除「${name}」`, 'info');
+                    UIWidgets.showToast(`已移除「${name}」`, 'info');
                 }
             });
             updateGroupVisButtons(groupEl, name);
@@ -2054,8 +1808,8 @@ const UIManager = (function() {
                 const primary = LayerManager.getThemeColor(style, getLayerGeometryType(info.data)) || color;
                 html += `
                     <div class="legend-item">
-                        <span class="legend-color" style="background:${escapeHtml(primary)};"></span>
-                        ${escapeHtml(name)}
+                        <span class="legend-color" style="background:${ColorUtils.escapeHtml(primary)};"></span>
+                        ${ColorUtils.escapeHtml(name)}
                     </div>
                 `;
             }
@@ -2076,17 +1830,17 @@ const UIManager = (function() {
         applyBasemapForTheme();
         // R95：主题切换 → 非原生暗色底图同步套/摘瓦片暗色滤镜
         if (MapManager.refreshTilesThemeFilter) MapManager.refreshTilesThemeFilter();
-        showToast(isDark ? '🌙 切换到暗色主题' : '☀️ 切换到亮色主题', 'info');
+        UIWidgets.showToast(isDark ? '🌙 切换到暗色主题' : '☀️ 切换到亮色主题', 'info');
     }
 
     function toggleFullscreen() {
         const el = document.documentElement;
         if (!document.fullscreenElement) {
             const request = el.requestFullscreen?.() || el.webkitRequestFullscreen?.();
-            Promise.resolve(request).catch(() => showToast('无法进入全屏模式', 'error'));
+            Promise.resolve(request).catch(() => UIWidgets.showToast('无法进入全屏模式', 'error'));
         } else {
             const exit = document.exitFullscreen?.() || document.webkitExitFullscreen?.();
-            Promise.resolve(exit).catch(() => showToast('无法退出全屏模式', 'error'));
+            Promise.resolve(exit).catch(() => UIWidgets.showToast('无法退出全屏模式', 'error'));
         }
         syncFullscreenState();
     }
@@ -2216,289 +1970,6 @@ const UIManager = (function() {
     // 自定义取色器（应用内调色板，样式跟随亮/暗主题；替代原生 <input type="color">，
     // 避免系统取色器弹层被遮挡、且与界面主题不一致的问题）
     // ================================================================
-    const CP_PRESETS = [
-        '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
-        '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#3b82f6',
-        '#4f6ef7', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-        '#ec4899', '#78716c', '#334155', '#64748b', '#ffffff',
-    ];
-    let activeColorPicker = null;
-
-    // 规范化 hex（#rgb → #rrggbb；非法值回退默认蓝）
-    function normalizeHex(value) {
-        let hex = String(value ?? '').trim().replace(/^#/, '');
-        if (/^[0-9a-f]{3}$/i.test(hex)) {
-            hex = hex.split('').map(ch => ch + ch).join('');
-        }
-        if (!/^[0-9a-f]{6}$/i.test(hex)) hex = '4f6ef7';
-        return `#${hex.toLowerCase()}`;
-    }
-
-    function rgbToHex(r, g, b) {
-        const to2 = n => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
-        return `#${to2(r)}${to2(g)}${to2(b)}`;
-    }
-
-    function hsvToHex(h, s, v) {
-        const c = v * s;
-        const hp = (((h % 360) + 360) % 360) / 60;
-        const x = c * (1 - Math.abs(hp % 2 - 1));
-        let r = 0, g = 0, b = 0;
-        if (hp < 1) [r, g, b] = [c, x, 0];
-        else if (hp < 2) [r, g, b] = [x, c, 0];
-        else if (hp < 3) [r, g, b] = [0, c, x];
-        else if (hp < 4) [r, g, b] = [0, x, c];
-        else if (hp < 5) [r, g, b] = [x, 0, c];
-        else [r, g, b] = [c, 0, x];
-        const m = v - c;
-        return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
-    }
-
-    function hexToHsv(hex) {
-        const norm = normalizeHex(hex).slice(1);
-        const r = parseInt(norm.slice(0, 2), 16) / 255;
-        const g = parseInt(norm.slice(2, 4), 16) / 255;
-        const b = parseInt(norm.slice(4, 6), 16) / 255;
-        const max = Math.max(r, g, b), min = Math.min(r, g, b);
-        const d = max - min;
-        let h = 0;
-        if (d > 0) {
-            if (max === r) h = 60 * (((g - b) / d) % 6);
-            else if (max === g) h = 60 * ((b - r) / d + 2);
-            else h = 60 * ((r - g) / d + 4);
-        }
-        if (h < 0) h += 360;
-        return { h, s: max === 0 ? 0 : d / max, v: max };
-    }
-
-    function closeColorPicker() {
-        if (!activeColorPicker) return;
-        const { popover, onGlobalPointerDown, onKeydown } = activeColorPicker;
-        document.removeEventListener('pointerdown', onGlobalPointerDown, true);
-        document.removeEventListener('keydown', onKeydown, true);
-        popover.remove();
-        activeColorPicker = null;
-    }
-
-    function openColorPicker(btn, id, opts) {
-        closeColorPicker();
-        const key = btn.dataset.colorKey;
-        const mode = (opts && opts.mode === 'label') ? 'label' : 'style';
-        if (!key) return;
-        let initialHex;
-        if (mode === 'label') {
-            initialHex = normalizeHex(btn.dataset.color || (key === 'textColor' ? '#334155' : '#ffffff'));
-        } else {
-            const style = LayerManager.getLayerStyle(id);
-            if (!style) return;
-            initialHex = normalizeHex(style[key]);
-        }
-
-        let hsv = hexToHsv(initialHex);
-
-        const popover = document.createElement('div');
-        popover.className = 'color-picker-pop';
-        popover.innerHTML = `
-            <div class="cp-sv"><div class="cp-sv-cursor"></div></div>
-            <input type="range" class="cp-hue" min="0" max="360" step="1" aria-label="色相" />
-            <div class="cp-presets"></div>
-            <div class="cp-hex-row">
-                <span class="cp-hex-label">HEX</span>
-                <input type="text" class="cp-hex-input" maxlength="7" spellcheck="false" />
-            </div>
-        `;
-        document.body.appendChild(popover);
-
-        const svArea = popover.querySelector('.cp-sv');
-        const svCursor = popover.querySelector('.cp-sv-cursor');
-        const hueRange = popover.querySelector('.cp-hue');
-        const presetsBox = popover.querySelector('.cp-presets');
-        const hexInput = popover.querySelector('.cp-hex-input');
-
-        presetsBox.innerHTML = CP_PRESETS.map(hex =>
-            `<button type="button" class="cp-preset" data-hex="${hex}" style="background:${hex};" aria-label="选择颜色 ${hex}"></button>`
-        ).join('');
-
-        // 实时应用到图层样式与按钮显示；取色器内 HEX 输入框同步跟随
-        // （用户正在输入时不回写，避免打断输入）
-        const applyColor = function(hex) {
-            // R110：只写入预览工作副本 + 刷新示例，点击「完成」才真正应用
-            if (mode === 'label') {
-                if (!pendingLabel) return;
-                pendingLabel[key] = hex;
-                btn.dataset.color = hex;
-                const swatch = btn.querySelector('.color-field-swatch');
-                if (swatch) swatch.style.background = hex;
-                const hexEl = btn.querySelector('.hex-val') || document.querySelector(`[data-hex-for="${key}"]`);
-                if (hexEl) hexEl.textContent = hex.toUpperCase();
-                const body = document.getElementById('labelSettingsBody');
-                if (body) updateLabelPreview(body);
-                return;
-            }
-            pendingStyle[key] = hex;
-            btn.dataset.color = hex;
-            const swatch = btn.querySelector('.color-field-swatch');
-            if (swatch) swatch.style.background = hex;
-            const hexEl = document.querySelector(`[data-hex-for="${key}"]`);
-            if (hexEl) hexEl.textContent = hex.toUpperCase();
-            if (document.activeElement !== hexInput) {
-                hexInput.value = hex.toUpperCase();
-            }
-            const body = document.getElementById('styleModalBody');
-            if (body) updateStylePreview(body);
-            syncStyleResetState(id);
-        };
-
-        const render = function() {
-            svArea.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hsvToHex(hsv.h, 1, 1)})`;
-            svCursor.style.left = `${hsv.s * 100}%`;
-            svCursor.style.top = `${(1 - hsv.v) * 100}%`;
-            svCursor.style.background = hsvToHex(hsv.h, hsv.s, hsv.v);
-            hueRange.value = String(Math.round(hsv.h));
-        };
-
-        // 定位：按钮下方优先，空间不足翻到上方，整体限制在视口内（fixed 定位不受弹窗裁剪/遮挡）
-        popover.style.visibility = 'hidden';
-        const popRect = popover.getBoundingClientRect();
-        const rect = btn.getBoundingClientRect();
-        let left = Math.min(Math.max(8, rect.left), window.innerWidth - popRect.width - 8);
-        let top = rect.bottom + 8;
-        if (top + popRect.height > window.innerHeight - 8) {
-            top = Math.max(8, rect.top - popRect.height - 8);
-        }
-        popover.style.left = `${Math.round(left)}px`;
-        popover.style.top = `${Math.round(top)}px`;
-        popover.style.visibility = '';
-
-        // SV 面板拖拽选色
-        const pickFromSv = function(event) {
-            const box = svArea.getBoundingClientRect();
-            hsv.s = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
-            hsv.v = 1 - Math.min(1, Math.max(0, (event.clientY - box.top) / box.height));
-            render();
-            applyColor(hsvToHex(hsv.h, hsv.s, hsv.v));
-        };
-        svArea.addEventListener('pointerdown', function(event) {
-            event.preventDefault();
-            svArea.setPointerCapture(event.pointerId);
-            pickFromSv(event);
-            const onMove = e => pickFromSv(e);
-            const onUp = function() {
-                svArea.removeEventListener('pointermove', onMove);
-                svArea.removeEventListener('pointerup', onUp);
-            };
-            svArea.addEventListener('pointermove', onMove);
-            svArea.addEventListener('pointerup', onUp);
-        });
-
-        hueRange.addEventListener('input', function() {
-            hsv.h = parseFloat(this.value) || 0;
-            render();
-            applyColor(hsvToHex(hsv.h, hsv.s, hsv.v));
-        });
-
-        presetsBox.addEventListener('click', function(event) {
-            const preset = event.target.closest('.cp-preset');
-            if (!preset) return;
-            hsv = hexToHsv(preset.dataset.hex);
-            hexInput.value = preset.dataset.hex.toUpperCase();
-            render();
-            applyColor(preset.dataset.hex);
-        });
-
-        hexInput.value = normalizeHex(initialHex).toUpperCase();
-        const commitHex = function() {
-            const hex = normalizeHex(hexInput.value);
-            hexInput.value = hex.toUpperCase();
-            hsv = hexToHsv(hex);
-            render();
-            applyColor(hex);
-        };
-        hexInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                commitHex();
-                hexInput.blur();
-            }
-        });
-        hexInput.addEventListener('input', function() {
-            const raw = this.value.trim();
-            if (/^#?[0-9a-f]{6}$/i.test(raw)) {
-                const hex = normalizeHex(raw);
-                hsv = hexToHsv(hex);
-                render();
-                applyColor(hex);
-            }
-        });
-        hexInput.addEventListener('blur', commitHex);
-
-        // 点击取色器外部 / 按 Escape 关闭
-        const onGlobalPointerDown = function(event) {
-            if (!popover.contains(event.target) && !btn.contains(event.target)) closeColorPicker();
-        };
-        const onKeydown = function(event) {
-            if (event.key === 'Escape') closeColorPicker();
-        };
-        document.addEventListener('pointerdown', onGlobalPointerDown, true);
-        document.addEventListener('keydown', onKeydown, true);
-
-        render();
-        activeColorPicker = { popover, btn, onGlobalPointerDown, onKeydown };
-    }
-
-    function colorField(key, label, value) {
-        const hex = normalizeHex(value);
-        return `
-            <div class="style-field">
-                <label>${label}</label>
-                <div class="style-control">
-                    <button type="button" class="color-field-btn" data-color-key="${key}" data-color="${escapeHtml(hex)}">
-                        <span class="color-field-swatch" style="background:${escapeHtml(hex)};"></span>
-                        <span class="hex-val" data-hex-for="${key}">${escapeHtml(hex.toUpperCase())}</span>
-                        <i class="fas fa-chevron-down color-field-caret"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-
-    // R111/R112：标注面板的颜色字段——与图例/样式配置使用同一套自定义取色器 UI（.color-field-btn + 弹层）
-    // R112：移除「默认」按钮（颜色始终为具体取值，保持与本项目风格一致）
-    function labelColorField(key, label, value) {
-        // R114：文字颜色空值默认取图例色（labelLegendColor），扫边颜色无图例概念则默认白
-        const def = key === 'textColor' ? (labelLegendColor || '#334155') : '#ffffff';
-        const hex = normalizeHex(value || def);
-        return `
-            <div class="style-field">
-                <label>${label}</label>
-                <div class="style-control">
-                    <button type="button" class="color-field-btn" data-color-key="${key}" data-color="${escapeHtml(hex)}" data-label-color="1">
-                        <span class="color-field-swatch" style="background:${escapeHtml(hex)};"></span>
-                        <span class="hex-val" data-hex-for="${key}">${escapeHtml(hex.toUpperCase())}</span>
-                        <i class="fas fa-chevron-down color-field-caret"></i>
-                    </button>
-                </div>
-            </div>`;
-    }
-
-    // R114：自定义下拉组件（替代原生 select，彻底解决原生下拉的 OS 样式/悬停不可定制问题）。
-    // options: [{value, text}]；customSelectHTML 仅产出结构，绑定见 bindCustomSelect。
-    function customSelectHTML(id, options, currentValue) {
-        const cur = options.find(o => o.value === currentValue);
-        const curText = cur ? cur.text : (options[0] ? options[0].text : '');
-        const opts = options.map(o =>
-            `<div class="custom-select-option ${o.value === currentValue ? 'selected' : ''}" data-value="${escapeHtml(o.value)}" role="option" aria-selected="${o.value === currentValue}">${escapeHtml(o.text)}</div>`
-        ).join('');
-        return `
-            <div class="custom-select" id="${id}" data-value="${escapeHtml(currentValue)}" tabindex="0">
-                <div class="custom-select-trigger">
-                    <span class="custom-select-value">${escapeHtml(curText)}</span>
-                    <i class="fas fa-chevron-down custom-select-caret"></i>
-                </div>
-                <div class="custom-select-options" role="listbox">${opts}</div>
-            </div>`;
-    }
-
     function rangeField(key, label, value, min, max, step, unit) {
         const val = Math.round(Number(value) * 100) / 100;
         return `
@@ -2514,7 +1985,7 @@ const UIManager = (function() {
 
     // 不透明度字段：滑块以 0~100% 显示，存储为 0~1
     function opacityField(key, label, value) {
-        const percent = Math.round(clamp01(value) * 100);
+        const percent = Math.round(ColorUtils.clamp01(value) * 100);
         return rangeField(key, label, percent, 0, 100, 1, '%');
     }
 
@@ -2559,30 +2030,30 @@ const UIManager = (function() {
         const groups = [];
         if (type === 'polygon' || type === 'mixed') {
             groups.push(styleGroup('填充', [
-                colorField('fillColor', '颜色', style.fillColor),
+                ColorUtils.colorField('fillColor', '颜色', style.fillColor),
                 opacityField('fillOpacity', '不透明度', style.fillOpacity),
             ]));
             groups.push(styleGroup(type === 'mixed' ? '线条（边界）' : '线条', [
-                colorField('strokeColor', '颜色', style.strokeColor),
+                ColorUtils.colorField('strokeColor', '颜色', style.strokeColor),
                 opacityField('strokeOpacity', '不透明度', style.strokeOpacity),
                 rangeField('strokeWidth', '宽度', style.strokeWidth, 0, 8, 0.5, 'px'),
             ]));
         }
         if (type === 'line' || type === 'mixed') {
             groups.push(styleGroup('线条', [
-                colorField('lineColor', '颜色', style.lineColor),
+                ColorUtils.colorField('lineColor', '颜色', style.lineColor),
                 opacityField('lineOpacity', '不透明度', style.lineOpacity),
                 rangeField('lineWidth', '宽度', style.lineWidth, 0.5, 12, 0.5, 'px'),
             ]));
         }
         if (type === 'point' || type === 'mixed') {
             groups.push(styleGroup('点', [
-                colorField('pointColor', '颜色', style.pointColor),
+                ColorUtils.colorField('pointColor', '颜色', style.pointColor),
                 opacityField('pointOpacity', '不透明度', style.pointOpacity),
                 rangeField('pointSize', '大小', style.pointSize, 4, 32, 1, 'px'),
             ]));
             groups.push(styleGroup(type === 'mixed' ? '线条（点边线）' : '线条', [
-                colorField('pointStrokeColor', '颜色', style.pointStrokeColor),
+                ColorUtils.colorField('pointStrokeColor', '颜色', style.pointStrokeColor),
                 opacityField('pointStrokeOpacity', '不透明度', style.pointStrokeOpacity),
                 rangeField('pointStrokeWidth', '宽度', style.pointStrokeWidth, 0, 6, 0.5, 'px'),
             ]));
@@ -2624,11 +2095,20 @@ const UIManager = (function() {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 // 再次点击同一按钮 = 收起取色器
-                if (activeColorPicker && activeColorPicker.btn === this) {
-                    closeColorPicker();
+                if (ColorUtils.getActivePicker() && ColorUtils.getActivePicker().btn === this) {
+                    ColorUtils.closeColorPicker();
                     return;
                 }
-                openColorPicker(this, id);
+                // 面板副作用（写入预览工作副本 + 刷新示例）通过 onChange 注入
+                ColorUtils.openColorPicker(this, id, {
+                    onChange: hex => {
+                        if (!pendingStyle) return;
+                        pendingStyle[this.dataset.colorKey] = hex;
+                        const bodyEl = document.getElementById('styleModalBody');
+                        if (bodyEl) updateStylePreview(bodyEl);
+                        syncStyleResetState(id);
+                    },
+                });
             });
         });
     }
@@ -2665,7 +2145,7 @@ const UIManager = (function() {
     function openStylePanel(id) {
         const info = LayerManager.getLayerInfo(id);
         if (!info) return;
-        closeColorPicker();
+        ColorUtils.closeColorPicker();
         stylePanelLayerId = id;
         const modal = document.getElementById('styleModal');
         const title = document.getElementById('styleModalTitle');
@@ -2687,7 +2167,7 @@ const UIManager = (function() {
     }
 
     function closeStylePanel() {
-        closeColorPicker();
+        ColorUtils.closeColorPicker();
         const modal = document.getElementById('styleModal');
         if (modal) modal.hidden = true;
         stylePanelLayerId = null;
@@ -2697,7 +2177,7 @@ const UIManager = (function() {
 
     function refreshStylePanel() {
         if (!stylePanelLayerId) return;
-        closeColorPicker();
+        ColorUtils.closeColorPicker();
         const info = LayerManager.getLayerInfo(stylePanelLayerId);
         const body = document.getElementById('styleModalBody');
         if (!info || !body) return;
@@ -2749,7 +2229,7 @@ const UIManager = (function() {
                     <div class="style-field">
                         <label>标注字段</label>
                         <div class="style-control">
-                            ${customSelectHTML('labelFieldSelect', fieldOpts, settings.field)}
+                            ${ColorUtils.customSelectHTML('labelFieldSelect', fieldOpts, settings.field)}
                         </div>
                     </div>
                     <div class="style-field">
@@ -2765,7 +2245,7 @@ const UIManager = (function() {
             <div class="style-group">
                 <div class="style-group-title">文字</div>
                 <div class="style-group-fields">
-                    ${labelColorField('textColor', '文字颜色', settings.textColor)}
+                    ${ColorUtils.labelColorField('textColor', '文字颜色', settings.textColor)}
                     <div class="style-field">
                         <label>不透明度</label>
                         <div class="style-control">
@@ -2776,7 +2256,7 @@ const UIManager = (function() {
                     <div class="style-field">
                         <label>字体</label>
                         <div class="style-control">
-                            ${customSelectHTML('labelFontSelect', fontOpts, settings.fontFamily)}
+                            ${ColorUtils.customSelectHTML('labelFontSelect', fontOpts, settings.fontFamily)}
                         </div>
                     </div>
                     <div class="style-field">
@@ -2791,7 +2271,7 @@ const UIManager = (function() {
             <div class="style-group">
                 <div class="style-group-title">扫边（描边）</div>
                 <div class="style-group-fields">
-                    ${labelColorField('haloColor', '扫边颜色', settings.haloColor)}
+                    ${ColorUtils.labelColorField('haloColor', '扫边颜色', settings.haloColor)}
                     <div class="style-field">
                         <label>不透明度</label>
                         <div class="style-control">
@@ -2859,8 +2339,17 @@ const UIManager = (function() {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 // 再次点击同一按钮 = 收起取色器
-                if (activeColorPicker && activeColorPicker.btn === this) { closeColorPicker(); return; }
-                openColorPicker(this, null, { mode: 'label' });
+                if (ColorUtils.getActivePicker() && ColorUtils.getActivePicker().btn === this) { ColorUtils.closeColorPicker(); return; }
+                // 面板副作用（写入预览工作副本 + 刷新示例）通过 onChange 注入
+                ColorUtils.openColorPicker(this, null, {
+                    mode: 'label',
+                    onChange: hex => {
+                        if (!pendingLabel) return;
+                        pendingLabel[this.dataset.colorKey] = hex;
+                        const bodyEl = document.getElementById('labelSettingsBody');
+                        if (bodyEl) updateLabelPreview(bodyEl);
+                    },
+                });
             });
         });
 
@@ -2915,10 +2404,10 @@ const UIManager = (function() {
         el.style.fontSize = baseFont + 'px';
         const textOpacity = (s.textOpacity === '' || s.textOpacity == null) ? 1 : Number(s.textOpacity);
         // R114：文字颜色空值 -> 图例色（与地图渲染一致），否则使用自定义色
-        el.style.color = hexToRgba(s.textColor || labelLegendColor, textOpacity);
+        el.style.color = ColorUtils.hexToRgba(s.textColor || labelLegendColor, textOpacity);
         const hw = (s.haloWidth === '' || s.haloWidth == null) ? 2 : Number(s.haloWidth);
         const haloOpacity = (s.haloOpacity === '' || s.haloOpacity == null) ? 1 : Number(s.haloOpacity);
-        const hc = hexToRgba(s.haloColor || '#ffffff', haloOpacity);
+        const hc = ColorUtils.hexToRgba(s.haloColor || '#ffffff', haloOpacity);
         el.style.textShadow = hw > 0 ? `0 0 ${(hw * 1.5).toFixed(1)}px ${hc}, 0 0 ${(hw * 0.8).toFixed(1)}px ${hc}` : 'none';
         if (s.show === false) { el.style.opacity = '0.35'; el.title = '当前隐藏'; }
         else { el.style.opacity = ''; el.title = ''; }
@@ -3005,245 +2494,9 @@ const UIManager = (function() {
         });
     }
 
-    // ---------- 统一应用弹窗（确认 / 信息共用） ----------
-    // 返回 Promise：confirmText → true；cancelText / 遮罩 / Esc → false。
-    // 不传 cancelText 时为「信息模式」（只有确认按钮）。
-    // `nowrap: true` 弹窗消息不换行（弹窗宽度按内容自适应），用于短确认（如下载）
-    function showAppModal({ icon = 'fa-circle-question', title = '提示', message = '', confirmText = '确认', cancelText = '取消', danger = false, nowrap = false } = {}) {
-        const overlay = document.getElementById('appModal');
-        if (!overlay) return Promise.resolve(false);
-        const card = overlay.querySelector('.app-modal');
-        const titleEl = overlay.querySelector('#appModalTitle');
-        const iconEl = overlay.querySelector('.app-modal-icon i');
-        const body = overlay.querySelector('#appModalMessage');
-        const cancelBtn = overlay.querySelector('#appModalCancel');
-        const confirmBtn = overlay.querySelector('#appModalConfirm');
-        if (!titleEl || !body || !cancelBtn || !confirmBtn) return Promise.resolve(false);
 
-        titleEl.textContent = title;
-        if (iconEl) {
-            iconEl.className = `fas ${icon}`;
-            iconEl.classList.toggle('danger', danger);
-        }
-        // textContent 避免内容被当作 HTML 解析
-        body.textContent = message;
-        confirmBtn.textContent = confirmText;
-        confirmBtn.classList.toggle('danger', danger);
-        cancelBtn.textContent = cancelText || '';
-        cancelBtn.hidden = !cancelText;
-        // nowrap 时弹窗宽度按内容自适应（一行显示，不折行）
-        if (card) card.classList.toggle('nowrap', nowrap);
 
-        // 打开弹窗前关闭所有其它浮层（分组更多 / 底图 / 搜索），
-        // 避免它们与弹窗重叠显示
-        closeAllGroupMoreMenus();
-        closeAllMapToolMenus();
-
-        overlay.hidden = false;
-        document.body.classList.add('modal-open');
-
-        return new Promise(resolve => {
-            const cleanup = () => {
-                overlay.hidden = true;
-                document.body.classList.remove('modal-open');
-                if (card) card.classList.remove('nowrap');
-                cancelBtn.removeEventListener('click', onCancel);
-                confirmBtn.removeEventListener('click', onConfirm);
-                overlay.removeEventListener('click', onOverlay);
-                document.removeEventListener('keydown', onKey);
-            };
-            const onCancel = () => { cleanup(); resolve(false); };
-            const onConfirm = () => { cleanup(); resolve(true); };
-            const onOverlay = (e) => { if (e.target === overlay) { cleanup(); resolve(false); } };
-            const onKey = (e) => { if (e.key === 'Escape') { cleanup(); resolve(false); } };
-            cancelBtn.addEventListener('click', onCancel);
-            confirmBtn.addEventListener('click', onConfirm);
-            overlay.addEventListener('click', onOverlay);
-            document.addEventListener('keydown', onKey);
-            confirmBtn.focus();
-        });
-    }
-
-    // ---------- 复制到剪贴板（R59：邮箱点击复制，替代依赖邮件客户端的 mailto） ----------
-    // 优先 Clipboard API（localhost/https secure context 可用），失败回退 execCommand
-    function copyToClipboard(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(
-                () => showToast(`已复制：${text}`, 'success'),
-                () => fallbackCopy(text)
-            );
-        } else {
-            fallbackCopy(text);
-        }
-    }
-
-    function fallbackCopy(text) {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        let ok = false;
-        try { ok = document.execCommand('copy'); } catch (e) { /* 忽略 */ }
-        document.body.removeChild(ta);
-        showToast(ok ? `已复制：${text}` : '复制失败，请手动复制', ok ? 'success' : 'error');
-    }
-
-    // ---------- 作者信息弹窗（导航栏「关于作者」头像按钮打开） ----------
-    // 内容来自 CONFIG.author，纯 textContent 渲染防注入；关闭：关闭按钮 / 知道了 / 遮罩 / Esc
-    function showAuthorModal() {
-        const overlay = document.getElementById('authorModal');
-        if (!overlay) return;
-        const author = (typeof CONFIG !== 'undefined' && CONFIG.author) || {};
-        const nameEl = overlay.querySelector('#authorModalName');
-        const avatarEl = overlay.querySelector('#authorAvatar');
-        const taglineEl = overlay.querySelector('#authorModalTagline');
-        const bioEl = overlay.querySelector('#authorModalBio');
-        const websiteEl = overlay.querySelector('#authorModalWebsite');
-        const detailsEl = overlay.querySelector('#authorModalDetails');
-        if (nameEl) nameEl.textContent = author.name || '佚名';
-        if (avatarEl) avatarEl.textContent = String(author.name || '?').trim().charAt(0);
-        if (taglineEl) taglineEl.textContent = author.tagline || '';
-        if (bioEl) bioEl.textContent = author.bio || '';
-        if (websiteEl) websiteEl.textContent = author.website || '';
-        if (detailsEl) {
-            detailsEl.innerHTML = '';
-            (author.details || []).forEach(detail => {
-                const li = document.createElement('li');
-                const icon = document.createElement('span');
-                icon.className = 'detail-icon';
-                const i = document.createElement('i');
-                i.className = `fas ${detail.icon || 'fa-circle-info'}`;
-                icon.appendChild(i);
-                const text = document.createElement('span');
-                text.className = 'detail-text';
-                const label = document.createElement('span');
-                label.className = 'detail-label';
-                label.textContent = detail.label || '';
-                const value = document.createElement('span');
-                value.className = 'detail-value';
-                value.textContent = detail.value || '';
-                text.appendChild(label);
-                text.appendChild(value);
-                li.appendChild(icon);
-                li.appendChild(text);
-                detailsEl.appendChild(li);
-            });
-        }
-        // 联系方式（R68 起按归属分列）：邮箱属作者 → 左列容器；GitHub 属项目 → 右列容器。
-        // 邮箱点击复制到剪贴板（mailto 依赖邮件客户端不可靠）；外链新窗口。文本一律 textContent 防注入
-        const contactAuthorEl = overlay.querySelector('#authorModalContactAuthor');
-        const contactProjectEl = overlay.querySelector('#authorModalContactProject');
-        // R72：每次打开必须先清空容器——R68 分流渲染后丢失了 innerHTML='' 清空，
-        // 导致重复打开弹窗时邮箱/GitHub 累积 append、出现多次
-        if (contactAuthorEl) contactAuthorEl.innerHTML = '';
-        if (contactProjectEl) contactProjectEl.innerHTML = '';
-        (author.contacts || []).forEach(contact => {
-            const target = contact.side === 'project' ? contactProjectEl : contactAuthorEl;
-            if (!target) return;
-            const el = document.createElement(contact.action === 'copy' ? 'button' : 'a');
-            if (contact.action === 'copy') el.type = 'button';
-            el.className = 'contact-item' + (contact.action === 'copy' ? ' contact-copy' : '');
-            if (contact.action === 'copy') {
-                el.dataset.tooltip = '点击复制邮箱';
-                el.setAttribute('aria-label', '复制邮箱地址');
-                el.addEventListener('click', () => copyToClipboard(contact.value));
-            } else {
-                el.href = contact.href || '#';
-                if (contact.href && contact.href.startsWith('http')) {
-                    el.target = '_blank';
-                    el.rel = 'noopener noreferrer';
-                }
-            }
-            const icon = document.createElement('span');
-            icon.className = 'detail-icon';
-            const i = document.createElement('i');
-            i.className = contact.icon || 'fas fa-circle-info';
-            icon.appendChild(i);
-            const text = document.createElement('span');
-            text.className = 'contact-text';
-            const label = document.createElement('span');
-            label.className = 'contact-label';
-            label.textContent = contact.label || '';
-            const value = document.createElement('span');
-            value.className = 'contact-value';
-            value.textContent = contact.value || '';
-            text.appendChild(label);
-            text.appendChild(value);
-            if (contact.desc) {
-                const desc = document.createElement('span');
-                desc.className = 'contact-desc';
-                desc.textContent = contact.desc;
-                text.appendChild(desc);
-            }
-            el.appendChild(icon);
-            el.appendChild(text);
-            target.appendChild(el);
-        });
-
-        overlay.hidden = false;
-        document.body.classList.add('modal-open');
-        const closeBtn = overlay.querySelector('#authorModalClose');
-        const okBtn = overlay.querySelector('#authorModalOk');
-        const cleanup = () => {
-            overlay.hidden = true;
-            document.body.classList.remove('modal-open');
-            if (closeBtn) closeBtn.removeEventListener('click', onClose);
-            if (okBtn) okBtn.removeEventListener('click', onClose);
-            overlay.removeEventListener('click', onOverlay);
-            document.removeEventListener('keydown', onKey);
-        };
-        const onClose = () => cleanup();
-        const onOverlay = (e) => { if (e.target === overlay) cleanup(); };
-        const onKey = (e) => { if (e.key === 'Escape') cleanup(); };
-        if (closeBtn) closeBtn.addEventListener('click', onClose);
-        if (okBtn) okBtn.addEventListener('click', onClose);
-        overlay.addEventListener('click', onOverlay);
-        document.addEventListener('keydown', onKey);
-        if (okBtn) okBtn.focus();
-    }
-
-    function showToast(message, type = 'info', duration = 3000) {
-        const container = document.getElementById('toastContainer');
-        if (!container) return;
-
-        // R88：提示消息出现在面板（侧边栏）右侧而非屏幕最右
-        const sidebar = document.getElementById('sidebar');
-        const sidebarOpen = sidebar && !sidebar.classList.contains('sidebar--collapsed');
-        if (sidebarOpen) {
-            const sbWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width'), 10) || 320;
-            container.style.left = (sbWidth + 12) + 'px';
-        } else {
-            container.style.left = '12px';
-        }
-        container.style.right = 'auto';
-
-        const icons = {
-            success: 'fas fa-check-circle',
-            error: 'fas fa-exclamation-circle',
-            info: 'fas fa-info-circle',
-            warning: 'fas fa-exclamation-triangle'
-        };
-
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        const icon = document.createElement('i');
-        icon.className = icons[type] || icons.info;
-        const text = document.createElement('span');
-        // textContent 避免消息内容被当作 HTML 解析
-        text.textContent = message;
-        toast.appendChild(icon);
-        toast.appendChild(text);
-
-        container.appendChild(toast);
-
-        setTimeout(() => {
-            toast.classList.add('fade-out');
-            setTimeout(() => toast.remove(), 300);
-        }, duration);
-    }
-
+    // ---------- 公开 API ----------
     return {
         init,
         updateLayerPanel,
@@ -3255,7 +2508,5 @@ const UIManager = (function() {
         toggleTheme,
         toggleFullscreen,
         togglePanel,
-        showToast,
-        showAuthorModal,
     };
 })();

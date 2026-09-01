@@ -17,11 +17,12 @@
     {
       "name": "隋唐洛阳-西苑",
       "category": "古代洛阳",
-      "info": "西苑是隋唐洛阳城西部的皇家园林（隋称显仁宫苑），本数据集包含上阳宫及周边宫城、宫门等要素。上阳宫位于洛水之滨，为唐代重要的离宫别苑。",
+      "info": "西苑是隋唐洛阳城西部的皇家园林（隋称显仁宫苑），本数据集包含上阳宫与上阳宫城墙、宫门，以及西苑苑墙、苑门和散布苑内的离宫等要素。上阳宫位于洛水之滨，为唐代重要的离宫别苑。",
       "files": [
         { "file": "隋唐洛阳/上阳宫.geojson", "name": "上阳宫", "style": { "fillColor": "#20c534", "fillOpacity": 0.3, "strokeWidth": 0.5 } },
         { "file": "隋唐洛阳/上阳宫城墙.geojson", "name": "上阳宫城墙", "style": { "lineColor": "#206ec5", "lineWidth": 1.5 } },
-        { "file": "隋唐洛阳/上阳宫门.geojson", "name": "上阳宫门", "style": { "pointColor": "#bc20c5", "pointSize": 6 } }
+        { "file": "隋唐洛阳/上阳宫门.geojson", "name": "上阳宫门", "style": { "pointColor": "#bc20c5", "pointSize": 6 } },
+        { "file": "隋唐洛阳/离宫.geojson", "name": "离宫", "style": { "fillColor": "#eab308", "fillOpacity": 0.3, "strokeWidth": 0.5 } }
       ]
     },
     {

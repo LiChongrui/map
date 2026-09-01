@@ -1,0 +1,461 @@
+/**
+ * 地图：地图区、测量工具、右下角控件、右侧工具栏、自定义缩放控件
+ *
+ * 由原单文件 css/style.css 按区块切分而来（R164）。
+ * 注意：本文件的引入顺序即级联顺序，调整顺序可能改变样式优先级。
+ */
+
+/* ===== Map Area & Map ===== */
+/* R93：地图占满整个视口（left:0），左侧边栏悬浮在地图上方——
+   玻璃面板（35% 透明 + backdrop blur）的圆角缺口处透出的是真实地图瓦片而非实色底，
+   「面板圆角透明」才真正成立。侧边栏折叠/展开不再改变地图宽度（transition 移除）；
+   fitBounds 的面板避让由 mapManager 的 overlap 启发式自动处理（内容居中于面板右侧可视区）。 */
+.map-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--map-bg, #e5e3df); /* R94：随主题变化 */
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--map-bg, #e5e3df); /* R94：随主题变化 */
+}
+
+/* 底图始终保持原始风格，主题切换不对瓦片层叠加任何滤镜（R137：用户要求） */
+
+
+/* ===== 测量工具（测距 / 测面积，地图右侧垂直工具栏） ===== */
+/* R83：按钮已移到 .map-tools 自定义工具栏，.measure-btn 继承 .map-tool-btn 样式，
+   此处仅保留测量过程中的视觉元素（点、标签、面积提示） */
+.map-tools .measure-btn.active {
+    background: var(--accent-gradient);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(79, 110, 247, 0.4);
+}
+
+.measure-point span {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent-color);
+    box-sizing: content-box;
+}
+
+.measure-label span {
+    background: var(--bg-secondary);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+    border: 1px solid var(--border-color);
+}
+
+/* 面积中心标签：Leaflet 原生 tooltip（direction: center），accent 渐变强调样式 */
+.leaflet-tooltip.measure-area-tooltip {
+    background: var(--accent-gradient);
+    color: #fff;
+    border: 0;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(79, 110, 247, 0.35);
+}
+
+.leaflet-tooltip.measure-area-tooltip::before {
+    display: none;
+}
+
+/* 测量激活时禁用地图上其他点击交互（要素弹窗/高亮等）：
+   容器加 .measuring，地图矢量要素/标记全部不响应点击 */
+.leaflet-container.measuring .leaflet-interactive {
+    pointer-events: none;
+}
+
+/* ===== 右下角控件（R78/R87）：缩放(+/-) 固定在右下角最右，比例尺/经纬度/供应商(版权) 依次排在缩放左侧，单行紧凑右对齐 ===== */
+.leaflet-bottom.leaflet-right {
+    display: flex;
+    align-items: flex-end;   /* 贴容器底（浏览器底部） */
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;                /* 各控件间统一间距 */
+    padding: 8px;
+}
+
+/* R88：下层信息行（左→右）：经纬度 → 比例尺 → 提供商；缩放控件为独立上层控件 */
+.leaflet-bottom.leaflet-right .coordinate-control {
+    order: 1;
+}
+
+.leaflet-bottom.leaflet-right .leaflet-control-scale {
+    order: 2;
+    display: flex;
+    margin: 0;
+}
+
+/* 服务商(版权) 排在最右 */
+.leaflet-bottom.leaflet-right .leaflet-control-attribution {
+    order: 3;
+    flex-basis: auto;
+    text-align: right;
+}
+
+/* R75：消除 Leaflet 默认 margin（.leaflet-bottom .leaflet-control margin-bottom:10px /
+   .leaflet-right .leaflet-control margin-right:10px），否则版权/比例尺被推偏、三控件不在一条线上 */
+.leaflet-bottom.leaflet-right .leaflet-control {
+    margin: 0;
+}
+
+.leaflet-bottom.leaflet-right .leaflet-control-scale {
+    margin-right: 0;
+    margin-left: 0; /* 间距由 flex gap 承担 */
+}
+
+/* R75：三控件统一字号/行高，消除文字大小不一（Leaflet scale-line 默认 10px、attribution 默认 11px 无 line-height） */
+.leaflet-bottom.leaflet-right .leaflet-control-scale-line,
+.leaflet-bottom.leaflet-right .leaflet-control-attribution {
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+/* R74：坐标控件透明背景（原白底/暗底卡片），文字加晕影保证在浅/深底图上可读 */
+.coordinate-control {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 0;
+    margin-right: 0; /* 间距由 flex gap 承担 */
+    font-size: 11px;
+    line-height: 1.6;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    color: #334155;
+    white-space: nowrap;
+    box-shadow: none;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 4px rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="dark"] .coordinate-control {
+    background: transparent;
+    border-color: transparent;
+    color: #cbd5e1;
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.95), 0 0 4px rgba(15, 23, 42, 0.85);
+}
+
+/* R74：版权 attribution 亮/暗均透明背景（覆盖 Leaflet 默认半透明白底） */
+.leaflet-control-attribution {
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .leaflet-control-attribution {
+    background: transparent !important;
+    color: #94a3b8;
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.9);
+}
+[data-theme="dark"] .leaflet-control-attribution a { color: #cbd5e1; text-shadow: 0 1px 2px rgba(15, 23, 42, 0.9); }
+
+/* R78：比例尺样式优化——半透明圆角药丸，细边框 + 轻投影；保留 left/right/bottom 描边呈现尺子观感 */
+.leaflet-control-scale-line {
+    background: rgba(255, 255, 255, 0.72) !important;
+    color: #334155 !important;
+    border-color: rgba(100, 116, 139, 0.55) !important;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 0 !important;   /* 去除 Leaflet 默认 margin-bottom，避免与下方一行间距过大 */
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+    text-shadow: none !important;
+}
+
+[data-theme="dark"] .leaflet-control-scale-line {
+    background: rgba(15, 23, 42, 0.6) !important;
+    color: #e2e8f0 !important;
+    border-color: rgba(148, 163, 184, 0.5) !important;
+    text-shadow: none !important;
+}
+
+/* ===== R83：地图右侧垂直工具栏（R105 恢复到原始右上角位置，不改动其布局） ===== */
+.map-tools {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* 地图左上角浮动按钮：展开面板（面板隐藏时位于左上方，作为唯一可见入口，R85/R87） */
+.map-fab {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    width: var(--map-tool-size);
+    height: var(--map-tool-size);
+    border: none;
+    border-radius: var(--radius-md);
+    /* R87：用主题强调色做背景，让「展开面板」入口更显眼 */
+    background: var(--accent-gradient);
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(79, 110, 247, 0.45);
+    /* R88：仅过渡 transform/box-shadow，避免悬停时渐变背景与实色互相插值导致「闪烁」 */
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.map-fab:hover {
+    /* 保持渐变背景不变，只做上浮 + 加深投影，杜绝悬停闪烁 */
+    background: var(--accent-gradient);
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(79, 110, 247, 0.6);
+    transform: translateY(-1px);
+}
+
+.map-fab.active {
+    background: var(--accent-gradient);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 14px rgba(79, 110, 247, 0.55);
+}
+
+.map-tool-btn {
+    width: var(--map-tool-size);
+    height: var(--map-tool-size);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+    transition: all var(--transition-fast);
+}
+
+.map-tool-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+/* R93：不可用态（清除测量在无测量内容时禁用）——灰化 + 禁止交互 */
+.map-tool-btn:disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+    pointer-events: none;
+    box-shadow: none;
+}
+
+.map-tool-btn.active {
+    background: var(--accent-gradient);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(79, 110, 247, 0.4);
+}
+
+/* R86/R107：右侧工具栏按类型分组分隔（测量组 / 视图组）；稍加粗并提升对比，使分割更明显 */
+.tool-sep {
+    width: 22px;
+    height: 2px;
+    margin: 4px auto;
+    border-radius: 2px;
+    background: rgba(100, 116, 139, 0.45);
+    flex-shrink: 0;
+}
+
+/* 底图切换下拉菜单（portal 到 body，fixed 定位匹配视口坐标） */
+.base-layer-tool-menu {
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 3000;
+	/* R89：宽度随文本内容自适应（最长底图名），不再固定 180px */
+	width: max-content;
+	min-width: 180px;
+	max-width: 280px;
+	/* R111：仅受视口高度约束——能放下所有选项就不出现滚动条；仅当窗口实在太矮才滚动 */
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-lg);
+	opacity: 0;
+	transform: translateY(-6px) scale(0.98);
+	transform-origin: top center;
+	pointer-events: none;
+	/* R88：仅过渡 opacity/transform，不过渡 left/top —— 否则窗口变化后重新打开会因 left/top 从旧值动画到新值而「跳一下」 */
+	transition: opacity var(--transition-fast), transform var(--transition-fast);
+	display: flex;
+	flex-direction: column;
+	/* R108：菜单内边距，选项不贴四边 */
+	padding: 6px;
+	gap: 2px;
+}
+
+.base-layer-tool-menu.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.base-layer-tool-option {
+	padding: 9px 12px;
+	margin: 0 2px;
+	border-radius: 8px;
+	color: var(--text-primary);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	white-space: nowrap;   /* R89：文本不换行，宽度由 max-content 自适应 */
+	border-bottom: none;
+	transition: background var(--transition-fast);
+}
+
+.base-layer-tool-option:not(:last-child) {
+	box-shadow: inset 0 -1px 0 0 var(--border-light);
+}
+
+/* R101：单选圆点（左侧）——单选(radio)样式：未选中为细灰环、中心透明；选中为外环(主题色)+中心实心点 */
+.base-layer-radio {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	border-radius: 50%;
+	border: 2px solid var(--text-muted);
+	background: transparent;
+	transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+	box-sizing: border-box;
+}
+
+.base-layer-icon {
+	width: 18px;
+	font-size: 13px;
+	color: var(--text-muted);
+	text-align: center;
+	flex-shrink: 0;
+	transition: color var(--transition-fast);
+}
+
+.base-layer-name {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.base-layer-tool-option:last-child {
+	border-bottom: none;
+}
+
+.base-layer-tool-option:hover,
+.base-layer-tool-option:focus-visible {
+	background: var(--bg-hover);
+	outline: none;
+}
+
+.base-layer-tool-option.active {
+	background: var(--accent-light);
+}
+
+/* R101：选中态 = 外环(主题色) + 中心实心点，标准单选(radio)指示 */
+.base-layer-tool-option.active .base-layer-radio {
+	border-color: var(--accent-color);
+	background: radial-gradient(circle, var(--accent-color) 0 3.5px, transparent 4px);
+	box-shadow: none;
+}
+
+.base-layer-tool-option.active .base-layer-icon,
+.base-layer-tool-option.active .base-layer-name {
+	color: var(--accent-color);
+}
+
+.base-layer-tool-option.active .base-layer-name {
+	font-weight: 600;
+}
+
+/* ===== R88：自定义缩放控件（独立于 Leaflet 默认 control） ===== */
+.zoom-control {
+    position: absolute;
+    right: 12px;
+    bottom: 56px;          /* 由 JS repositionBottomHud 按底部信息行高度动态覆盖 */
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-secondary);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
+
+.zoom-btn {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.zoom-btn + .zoom-btn { border-top: 1px solid var(--border-color); }
+.zoom-btn:hover:not(:disabled),
+.zoom-btn:focus-visible:not(:disabled) {
+    background: var(--accent-light);
+    color: var(--accent-color);
+}
+.zoom-btn:active:not(:disabled) { background: rgba(79, 110, 247, 0.2); }
+.zoom-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+[data-theme="dark"] .zoom-control { background: rgba(26, 26, 46, 0.96); }
+[data-theme="dark"] .zoom-btn { color: var(--text-primary); }
+[data-theme="dark"] .zoom-btn + .zoom-btn { border-color: var(--border-color); }
+
+/* 桌面端侧边栏默认展开；移动端通过 .sidebar--collapsed 隐藏为抽屉 */
+.sidebar.sidebar--collapsed {
+    transform: translateX(-100%);
+}
+
+/* 移动端抽屉遮罩 */
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-base);
+}
+
+.sidebar-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}

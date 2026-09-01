@@ -1,0 +1,1825 @@
+/**
+ * 面板：视图 Tab、统计条、数据集视图与分类分组、图层列表与分组、图层项、拖拽、Toast、定位标记
+ *
+ * 由原单文件 css/style.css 按区块切分而来（R164）。
+ * 注意：本文件的引入顺序即级联顺序，调整顺序可能改变样式优先级。
+ */
+
+/* ===== R127：面板视图 Tab（数据集 / 图层）===== */
+.panel-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.panel-tab {
+    flex: 1 1 0;
+    appearance: none;
+    border: none;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.panel-tab:hover {
+    color: var(--text-secondary);
+}
+.panel-tab.is-active {
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
+}
+
+/* 两个视图共用容器：flex 列，内部列表自行滚动 */
+.view-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.view-pane[hidden] {
+    display: none !important;
+}
+
+/* ===== 视图感知统计条（数据集 / 图层 各自统计，始终可见，与底部按钮同行） ===== */
+.panel-stats {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.panel-stats .stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    white-space: nowrap;
+}
+.panel-stats .stat-num {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.panel-stats .stat-label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+.panel-stats .stat-sep {
+    color: var(--border-color);
+    user-select: none;
+}
+
+/* ===== 数据集视图 ===== */
+.dataset-bulk-btn {
+    flex: 0 0 auto;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 13px;
+    color: var(--accent-color);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+.dataset-bulk-btn:hover {
+    background: var(--accent-light);
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 8px rgba(79, 110, 247, 0.18);
+}
+.dataset-bulk-btn:active {
+    transform: scale(0.94);
+}
+.dataset-bulk-btn.danger {
+    color: var(--danger-color, #e5484d);
+    border-color: rgba(229, 72, 77, 0.35);
+    background: rgba(229, 72, 77, 0.06);
+}
+.dataset-bulk-btn.danger:hover {
+    background: rgba(229, 72, 77, 0.12);
+    border-color: var(--danger-color, #e5484d);
+    box-shadow: 0 2px 8px rgba(229, 72, 77, 0.18);
+}
+
+.dataset-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* 顶部不留 padding：sticky 分类头吸顶时需贴住容器顶边
+       （padding 会把吸顶位置顶到 padding 下沿，上方留出缝隙，滚动的行会从缝隙里穿出） */
+    padding: 0 8px 10px;
+}
+
+/* 首个分类用 margin 提供顶部间距（滚动吸顶时该间距随组头滚走，组头贴容器顶） */
+.dataset-cat:first-child {
+    margin-top: 8px;
+}
+
+.dataset-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 10px 10px 11px;
+    border-bottom: 1px solid var(--border-color);
+    /* 已加载：左侧主题蓝条（inset，不影响布局） */
+    box-shadow: inset 0 0 0 0 transparent;
+    transition: background var(--transition-fast);
+}
+.dataset-row:hover {
+    background: var(--bg-hover);
+}
+.dataset-row.is-loaded {
+    background: var(--accent-light, rgba(79, 110, 247, 0.07));
+    box-shadow: inset 3px 0 0 var(--accent-color);
+}
+.dataset-row.is-loaded:hover {
+    background: rgba(79, 110, 247, 0.12);
+}
+.dataset-row.is-loaded .dataset-row-icon {
+    background: var(--accent-color);
+    color: #fff;
+}
+.dataset-row-icon {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 1px;
+}
+.dataset-row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.dataset-row-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.35;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* 列表不显示介绍文字，用 help 光标提示「悬停可看完整介绍」（仅对带介绍的数据集生效） */
+.dataset-row[data-tooltip] .dataset-row-name {
+    cursor: help;
+}
+.dataset-row-meta {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.dataset-row.is-loaded .dataset-row-meta {
+    color: var(--accent-color);
+}
+
+.ds-pill {
+    flex-shrink: 0;
+    align-self: center;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.ds-pill:hover {
+    border-color: var(--text-muted);
+    color: var(--text-secondary);
+}
+.ds-pill.is-loaded {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+}
+.ds-pill.is-loaded:hover {
+    background: var(--accent-hover, #3f5af0);
+    border-color: var(--accent-hover, #3f5af0);
+}
+
+.dataset-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.dataset-empty i {
+    display: block;
+    font-size: 26px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+/* ===== 数据集视图：分类分组（古代洛阳 / 古代北京 / 历代行政区划 …） ===== */
+.dataset-cat {
+    margin-bottom: 6px;
+    border-radius: var(--radius-md);
+}
+
+.dataset-cat-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 0 var(--border-color);
+}
+.dataset-cat-header:hover {
+    background: var(--bg-hover);
+}
+
+.dataset-cat-collapse {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--transition-base), color var(--transition-fast);
+}
+.dataset-cat.collapsed .dataset-cat-collapse {
+    transform: rotate(-90deg);
+}
+
+.dataset-cat-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    flex-shrink: 0;
+}
+
+.dataset-cat-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 已添加数 / 总数 */
+.dataset-cat-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.dataset-cat-header:hover .dataset-cat-count {
+    background: var(--bg-active);
+}
+
+/* 整组添加 / 移除：与行内 .ds-pill 同款，尺寸略小 */
+.dataset-cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+.dataset-cat-pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+.dataset-cat-pill.is-loaded {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+}
+.dataset-cat-pill.is-loaded:hover {
+    background: var(--accent-hover, #3f5af0);
+    border-color: var(--accent-hover, #3f5af0);
+}
+
+.dataset-cat-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0 4px 6px;
+}
+.dataset-cat.collapsed .dataset-cat-items {
+    display: none;
+}
+
+
+
+.panel-btn-icon {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+
+.panel-btn-icon:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* ===== Panel Toolbar ===== */
+.panel-toolbar {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.leaflet-popup-content-wrapper {
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+}
+
+.leaflet-popup-content { margin: 14px 16px; }
+
+/* ===== 要素详情弹窗 ===== */
+.feature-popup { min-width: 200px; }
+
+.feature-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.feature-popup-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.feature-popup-heading { min-width: 0; }
+
+.feature-popup-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.feature-popup-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.feature-popup-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 9px;
+}
+
+.feature-popup-row {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.feature-popup-key {
+    width: 62px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.feature-popup-val {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.leaflet-container a.leaflet-popup-close-button { color: var(--text-secondary); }
+.leaflet-container a.leaflet-popup-close-button:hover { color: var(--text-primary); }
+
+.search-wrapper {
+    flex: 1;
+    position: relative;
+}
+
+/* R97：侧边栏搜索框的地点命中下拉（「图层+地点」双搜） */
+.place-search-results {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+}
+
+.place-search-results.open { display: block; }
+
+.place-search-head {
+    padding: 7px 12px 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.place-search-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    transition: background var(--transition-fast);
+}
+
+.place-search-item:last-child { border-bottom: none; }
+
+.place-search-item:hover { background: var(--bg-hover); }
+.place-search-item.selected { background: var(--accent-soft, rgba(79,110,247,0.12)); }
+.place-search-item.selected .place-search-name { color: var(--accent-color); font-weight: 600; }
+
+.place-search-item i {
+    color: var(--accent-color);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.place-search-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.place-search-group {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.search-wrapper .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 13px;
+    transition: color var(--transition-fast);
+}
+
+.search-wrapper .search-input {
+    width: 100%;
+    padding: 8px 36px 8px 34px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 13px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    transition: all var(--transition-fast);
+    outline: none;
+}
+
+.search-wrapper .search-input:focus {
+    border-color: var(--accent-color);
+    background: var(--bg-secondary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* 聚焦时图标跟随主题色，与输入框呼应 */
+.search-wrapper:focus-within .search-icon {
+    color: var(--accent-color);
+}
+
+.search-wrapper .search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-wrapper .search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px;
+    display: none;
+}
+
+.search-wrapper .search-clear:hover {
+    color: var(--text-primary);
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* ===== R105：独立「地点搜索」——图标按钮置于右侧工具栏左侧，点击展开搜索框 ===== */
+.place-search-floating {
+    position: absolute;
+    /* R105：紧贴右侧工具栏左侧（工具栏在 right:12，宽 38，间距 8） */
+    top: 12px;
+    right: calc(12px + var(--map-tool-size) + 8px);
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* 图标按钮：常态仅显示，样式与右侧工具栏按钮一致；R108 底图按钮使用独立类 */
+.place-search-icon-btn,
+.map-tool-icon-btn {
+    flex-shrink: 0;
+    width: var(--map-tool-size);
+    height: var(--map-tool-size);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+    transition: all var(--transition-fast);
+}
+
+.place-search-icon-btn:hover,
+.map-tool-icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+/* R108：搜索展开态仅高亮搜索按钮，不误染独立底图按钮 */
+.place-search-floating.open #placeSearchToggle {
+    background: var(--accent-gradient);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(79, 110, 247, 0.4);
+}
+
+/* R108：底图切换图标按钮（#basemapToggle）菜单展开时高亮 */
+.place-search-floating #basemapToggle[aria-expanded="true"] {
+    background: var(--accent-gradient);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(79, 110, 247, 0.4);
+}
+
+/* R108：底图切换按钮与搜索按钮间距 */
+#basemapToggle {
+    margin-left: 8px;
+}
+
+/* 搜索框容器：折叠时宽度为 0，展开时向左伸展出输入框 */
+.place-search-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: width var(--transition-fast), opacity var(--transition-fast);
+}
+
+.place-search-floating.open .place-search-input-wrap {
+    width: 220px;
+    opacity: 1;
+    overflow: visible;
+}
+
+.place-search-input {
+    width: 100%;
+    padding: 9px 36px 9px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-md);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    outline: none;
+}
+
+.place-search-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
+}
+
+.place-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.place-search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px;
+    display: none;
+}
+
+.place-search-clear:hover {
+    color: var(--text-primary);
+}
+
+/* 地点结果下拉：相对搜索框定位 */
+.place-search-floating .place-search-results {
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 1200;
+    max-height: 320px;
+}
+
+/* 工具栏操作按钮：纯图标按钮（无背景无边框），紧凑排列在搜索框右侧 */
+.toolbar-btn {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: color var(--transition-fast);
+    white-space: nowrap;
+}
+
+.toolbar-btn i {
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+    color: var(--accent-color);
+}
+
+.toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* 删除所有数据集：危险操作，hover 变红提示 */
+.toolbar-btn#removeAllDatasets:hover:not(:disabled) {
+    color: var(--danger-color);
+}
+
+/* ===== Layer List ===== */
+.layer-list-container {
+    flex: 1;
+    overflow-y: auto;
+    /* 顶部不留 padding：sticky 分组头吸顶时需贴住容器顶边（padding 会导致吸顶后 8px 空隙） */
+    padding: 0 10px 8px 10px;
+    min-height: 120px;
+}
+
+/* 首个分组用 margin 提供顶部间距（滚动吸顶时该间距随组头滚走，组头贴容器顶） */
+.layer-group:first-child {
+    margin-top: 8px;
+}
+
+/* ===== 数据集分组（可折叠 / 可移除） ===== */
+.layer-group {
+    margin-bottom: 4px;
+    border-radius: var(--radius-md);
+}
+
+.layer-group-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+    /* 滚动吸顶：列表滚动时数据集名称保持可见（贴合当前显示的图层内容）；
+       sticky 需要滚动容器(.layer-list-container)直接包含，背景盖住下方图层行 */
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 0 var(--border-color);
+}
+
+.layer-group-header:hover {
+    background: var(--bg-hover);
+}
+
+.layer-group-collapse {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform var(--transition-base), color var(--transition-fast);
+}
+
+.layer-group.collapsed .layer-group-collapse {
+    transform: rotate(-90deg);
+}
+
+.layer-group-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    flex-shrink: 0;
+}
+
+.layer-group-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.layer-group-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.layer-group-header:hover .layer-group-count {
+    background: var(--bg-active);
+}
+
+/* 分组头操作按钮（zoom/more）：统一 28×28，与图层行/工具栏图标按钮一致 */
+.layer-group-vis {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.layer-group-vis:hover:not(:disabled) {
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+
+/* R87：数据集级显隐眼睛按钮（整组隐藏/显示，不改动各图层自身显隐） */
+.layer-group-dataset-vis {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+.layer-group-dataset-vis:hover {
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+/* 数据集处于「隐藏」态：眼睛变红（eye-slash），提示整组未上图、但图层自身状态保留 */
+.layer-group-dataset-vis.dataset-hidden-active {
+    color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.12);
+}
+/* 整组隐藏时弱化其图层列表，明确「该数据集整体未上图」（各图层个体眼睛仍显示其自身状态） */
+.layer-group.dataset-hidden .layer-group-items {
+    opacity: 0.45;
+}
+
+/* ===== 分组头「更多」菜单（⋮）：纯图标操作项 ===== */
+.layer-group-more {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.layer-group-more-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.layer-group-more-btn:hover,
+.layer-group-more-btn:focus-visible,
+.layer-group-more-btn.active {
+    color: var(--accent-color);
+    background: var(--accent-light);
+}
+
+.layer-group-more-menu {
+    /* fixed 定位 + 打开时移动到 body（portal）：菜单脱离面板（backdrop-filter 会把 fixed 的
+       containing block 劫持为面板本身，导致偏移/裁剪）与列表滚动容器，打开时由 JS 按按钮位置动态定位 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 3000;
+    width: max-content;
+    min-width: 92px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+    transform-origin: top right;
+    pointer-events: none;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.layer-group-more-menu.open {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+/* 菜单项：图标 + 简短文字 */
+.more-item {
+    width: 100%;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.more-item i {
+    width: 15px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.more-item:hover:not(:disabled) {
+    background: var(--bg-hover);
+}
+
+.more-item:hover:not(:disabled) i {
+    color: var(--accent-color);
+}
+
+.more-item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.more-item.more-remove i,
+.more-item.more-remove:hover:not(:disabled) i {
+    color: var(--danger-color);
+}
+
+.more-item.more-remove:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* R108：图层行内「更多」菜单按钮与下拉菜单 */
+.layer-more-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+
+.layer-more-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+}
+
+.layer-more-btn.active {
+    background: var(--accent-light);
+    color: var(--accent-color);
+}
+
+/* R108：图层行「更多」菜单（portal 到 body，结构与数据集更多菜单一致） */
+.layer-more-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 3000;
+    width: max-content;
+    min-width: 92px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+    transform-origin: top right;
+    pointer-events: none;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.layer-more-menu.open {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+.layer-group-vis:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.layer-group.collapsed .layer-group-items {
+    display: none;
+}
+
+/* 组内图层行整体缩进 + 左侧树形引导线（对齐折叠箭头中心），体现层级 */
+.layer-group-items {
+    padding: 2px 0 2px 15px;
+    margin-left: 19px;
+    border-left: 1px solid var(--border-color);
+}
+
+/* 搜索时强制展开已折叠的分组，保证结果可见 */
+.layer-list-container.searching .layer-group.collapsed .layer-group-items {
+    display: block;
+}
+
+/* 搜索无结果的轻提示 */
+.filter-empty {
+    padding: 22px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.filter-empty i {
+    margin-right: 6px;
+}
+
+/* ===== 地图要素标注 ===== */
+/* 外层容器：透明，覆盖 Leaflet .leaflet-div-icon 的默认白底/边框，仅承载定位 transform */
+.map-feature-label-wrap {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.map-feature-label {
+    width: max-content !important;
+    height: auto !important;
+    padding: 0 1px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    /* 中文字体优先，保证中英混排字形统一（避免 Segoe UI 等拉丁字体排在前面造成混排割裂）；
+       拉丁字体仅作兜底 */
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", "Helvetica Neue", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    /* 文字色 = 图层主题色（JS 传入 --label-color）；暗色主题下与白色混合提亮保证可读 */
+    color: var(--label-color, #334155);
+    /* 晕渲（halo）：用矢量 text-stroke 平滑描边（替代旧版八向像素 text-shadow——
+       像素对齐会产生锯齿/生硬感，矢量描边随字形平滑渲染）；
+       paint-order 让描边绘制在文字填充之后，不侵入文字内部 */
+    -webkit-text-stroke: 2px var(--label-halo);
+    paint-order: stroke fill;
+    /* 轻投影：仅保留一层，辅助暗色底图上与描边之间的过渡，避免多重 shadow 造成的发糊 */
+    text-shadow: 0 1px 2px rgba(15, 23, 42, 0.28);
+}
+
+[data-theme="dark"] .map-feature-label {
+    color: #e8e8f0;
+    color: color-mix(in srgb, var(--label-color, #334155) 60%, #ffffff);
+}
+
+/* 居中 transform 作用于内层，不受 Leaflet 外层内联 transform 影响：
+   R97：多边形与线标注均锚定在（几何重心 / 线上中点），水平垂直双居中 translate(-50%,-50%)；
+   点——水平居中、紧贴圆点上方（抬升量随点大小变化） */
+.map-feature-label--point { transform: translate(-50%, calc(-100% - var(--label-offset, 6px))); }
+.map-feature-label--polygon { transform: translate(-50%, -50%); }
+.map-feature-label--linestring { transform: translate(-50%, -50%); }
+
+/* 垂直排列（线走向较陡时）：文字逐字竖排且保持正向，不旋转；同样以锚点居中 */
+.map-feature-label--vertical {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.08em;
+}
+
+/* R106：地点搜索高亮——以要素真实几何绘制描边并闪烁，而非叠加独立点标记 */
+.place-flash-overlay {
+    animation: placeFlashPulse 1s ease-in-out infinite;
+}
+@keyframes placeFlashPulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* ===== 点要素图标：实心圆点 + 可配置边线（颜色/宽度由内联样式控制） ===== */
+.map-feature-point-icon {
+    background: transparent;
+    border: 0;
+    /* 圆点在图标容器内水平垂直居中，保证圆点中心精确落在坐标点上 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.point-dot {
+    display: block;
+    border-radius: 50%;
+    /* content-box：宽高 = 点内径，边线在尺寸之外叠加，与图层行图例的计算方式一致 */
+    box-sizing: content-box;
+    transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+/* ===== 地图要素 hover 反馈 ===== */
+/* 面/线：轻微提亮 + 提饱和，选中态与高亮层不受影响 */
+.leaflet-interactive:not(.feature-selected):not(.highlight-path):hover {
+    filter: brightness(1.18) saturate(1.06);
+}
+
+/* 点：hover 时圆点轻微放大 */
+.map-feature-point-icon:hover .point-dot {
+    transform: scale(1.18);
+}
+
+/* ===== 要素选中态（点击要素弹出详情时；主题蓝光晕，区别于图层高亮的琥珀色） ===== */
+path.feature-selected {
+    filter: drop-shadow(0 0 5px rgba(79, 110, 247, 0.85));
+}
+
+.point-marker-selected .point-dot {
+    box-shadow:
+        0 0 0 3px rgba(79, 110, 247, 0.42),
+        0 0 12px rgba(79, 110, 247, 0.7);
+}
+
+/* ===== 图层高亮（单击图层项时地图叠加层 + 图层项联动） ===== */
+/* 图层项高亮态 */
+.layer-item.highlighted {
+    background: var(--bg-selected);
+}
+
+.layer-item.highlighted:hover {
+    background: var(--bg-selected);
+}
+
+.layer-item.highlighted .layer-name span {
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+/* 地图高亮叠加：点要素脉冲圆环（面/线为虚线描边，样式由 JS 传入） */
+.map-highlight-icon {
+    background: transparent;
+    border: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.highlight-ring {
+    display: block;
+    border-radius: 50%;
+    border: 3px solid #f59e0b;
+    box-shadow:
+        0 0 0 3px rgba(245, 158, 11, 0.22),
+        0 0 16px rgba(245, 158, 11, 0.55);
+    box-sizing: border-box;
+    pointer-events: none;
+    /* 开场闪烁 3 次 → 常驻脉冲 */
+    animation: highlightIntro 1.3s linear 1, highlightPulse 1.5s ease-in-out 1.3s infinite;
+}
+
+/* 面/线高亮描边（className 由 JS 传入 SVG path） */
+path.highlight-path {
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.8));
+    animation: highlightIntro 1.3s linear 1, highlightPathPulse 1.5s ease-in-out 1.3s infinite;
+}
+
+@keyframes highlightPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.6; }
+}
+
+@keyframes highlightPathPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+/* 开场闪烁：明/暗快速交替 3 次后稳定显示 */
+@keyframes highlightIntro {
+    0%, 14% { opacity: 1; }
+    14.001%, 28% { opacity: 0.1; }
+    28.001%, 42% { opacity: 1; }
+    42.001%, 56% { opacity: 0.1; }
+    56.001%, 70% { opacity: 1; }
+    70.001%, 84% { opacity: 0.1; }
+    84.001%, 100% { opacity: 1; }
+}
+
+/* ===== Layer Item ===== */
+.layer-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    margin-bottom: 2px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+    user-select: none;
+    /* 基础间距（正常）；名称左侧的 把手/眼睛/图例 通过负 margin 拉近（见下） */
+    gap: 10px;
+}
+
+.layer-item:hover {
+    background: var(--bg-hover);
+}
+
+.layer-item:active {
+    transform: scale(0.98);
+}
+
+/* R108：数据集被隐藏时，整个图层行进入禁用态：所有按钮/图例/名称点击失效，视觉上半透明 */
+.layer-item.dataset-hidden {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.layer-item.dataset-hidden .layer-name {
+    color: var(--text-muted);
+}
+
+/* 拖拽期间（容器 sorting-active）：让位行/组的 transform 平滑过渡 ——
+   Sortable 让位动画靠元素自身的 transition: transform 实现（animation 选项与之一致），
+   若设为 none 会让位直接跳变（无动效）；只给 transform 加过渡，不动 opacity/background，
+   避免与跟手 clone（.sortable-drag 已 transition:none）冲突 */
+#layerList.sorting-active .layer-item,
+#layerList.sorting-active .layer-group {
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/* ===== Sortable 拖拽平滑样式（animation + easing 由 JS 配置） ===== */
+/* 占位幽灵：拖拽后原位置留下的落点提示——淡主题色填充 + 虚线轮廓，明确「可放置于此」 */
+.layer-item.sortable-ghost {
+    opacity: 0.55;
+    background: var(--accent-light);
+    outline: 2px dashed rgba(79, 110, 247, 0.65);
+    outline-offset: -2px;
+    border-radius: var(--radius-md);
+}
+.layer-item.sortable-ghost * { opacity: 0.35; }  /* 弱化原内容，突出落点 */
+
+/* 被选中项：轻微提亮 + 主题色描边，提示当前拖拽的是这一行 */
+.layer-item.sortable-chosen {
+    background: var(--bg-hover);
+    box-shadow: inset 0 0 0 1.5px var(--accent-color);
+    cursor: grabbing;
+}
+
+/* 拖拽跟随元素（图层行与数据集分组完全相同的效果；Sortable fallback clone 到 body 跟随鼠标）：
+   - opacity 1 !important：覆盖 Sortable fallback 内联设置的 opacity 0.8（半透明 = 「虚影在飘」的错觉）
+   - transition: none !important：覆盖 .layer-item 的 transition——
+     fallback 每帧用 transform 定位元素，任何 transition 都让元素滞后产生飘动/不流畅
+   - 不旋转：旋转中心与鼠标坐标错位，跟手性差；仅轻微放大 + 更强柔和阴影保持立体感
+   - pointer-events: none：跟随 clone 不拦截鼠标事件 */
+.layer-item.sortable-drag,
+.layer-group.sortable-drag {
+    opacity: 1 !important;
+    transform: scale(1.03);
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.34);
+    border-radius: var(--radius-md);
+    z-index: 4000;
+    pointer-events: none;
+    cursor: grabbing;
+    will-change: transform;
+    transition: none !important;
+}
+
+.layer-item .drag-handle {
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: grab;
+    opacity: 0.45;
+    transition: opacity var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.layer-item:hover .drag-handle {
+    opacity: 0.85;
+}
+
+.layer-item .drag-handle:active {
+    cursor: grabbing;
+}
+
+/* ===== 分组级拖拽（数据集分组调整加载顺序） ===== */
+.layer-group .layer-group-drag {
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: grab;
+    opacity: 0.35;
+    transition: opacity var(--transition-fast);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    margin-left: -2px;
+}
+
+.layer-group:hover .layer-group-drag {
+    opacity: 0.8;
+}
+
+.layer-group .layer-group-drag:active {
+    cursor: grabbing;
+}
+
+/* 分组拖拽三件套：ghost=整组淡占位+虚线、chosen=组头提亮、drag=整组实心跟随 */
+.layer-group.sortable-ghost {
+    opacity: 0.45;
+    outline: 1.5px dashed rgba(79, 110, 247, 0.5);
+    outline-offset: -2px;
+    border-radius: var(--radius-md);
+}
+
+.layer-group.sortable-chosen .layer-group-header {
+    background: var(--bg-selected);
+}
+/* 分组 drag 样式已与图层行合并统一（见上方 .layer-item.sortable-drag, .layer-group.sortable-drag） */
+
+/* 图层显示/隐藏：眼睛图标按钮，位于图层行左侧（主流图层列表的开关位），激活态主题色高亮 */
+.layer-item .vis-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.layer-item .vis-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+}
+
+.layer-item .vis-btn.active {
+    color: var(--accent-color);
+}
+
+/* 名称左侧元素紧凑（把手→眼睛→图例）：负 margin 抵消部分 gap；
+   名称与右侧操作按钮保持 10px 正常间距 */
+.layer-item .vis-btn {
+    margin-left: -6px;
+}
+
+.layer-item .layer-swatch {
+    margin-left: -6px;
+}
+
+/* R111/R112：图例色块容器占用固定尺寸（24×28，与图标按钮对齐）；R112 overflow:hidden 确保内部符号胀大时被裁剪，布局不变化 */
+.layer-item .layer-swatch {
+    width: 24px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: opacity var(--transition-fast);
+}
+
+.layer-item.hidden .layer-swatch {
+    opacity: 0.35;
+}
+
+/* 图例样式：尺寸/边线/透明度均由内联样式按当前样式配置生成，与地图显示一致；
+   不加投影/阴影——阴影会让细线/小点看起来比地图实际渲染的更大 */
+.swatch {
+    display: inline-block;
+    transition: all var(--transition-fast);
+}
+
+.swatch--point {
+    border-radius: 50%;
+    box-sizing: content-box;
+}
+
+/* 宽度由内联样式按线宽等比生成（粗线显示更长的线段） */
+.swatch--line {
+    border-radius: 1px;
+}
+
+.swatch--polygon {
+    width: 18px;
+    height: 14px;
+    border-radius: 3px;
+    box-sizing: content-box;
+}
+
+.swatch--mixed {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+}
+
+/* 图层信息 */
+.layer-item .layer-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.layer-item .layer-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    transition: color var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.layer-item.hidden .layer-name {
+    color: var(--text-muted);
+}
+
+.layer-item .layer-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.layer-item .layer-meta .meta-count {
+    letter-spacing: 0.02em;
+}
+
+/* 图层操作按钮：全部常显（缩放 / 标注；样式入口=点击图例） */
+.layer-item .layer-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.layer-item .layer-actions button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.layer-item .layer-actions button:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+}
+
+.layer-item .layer-actions button:disabled {
+    opacity: 0.42;
+    color: var(--text-muted);
+    cursor: not-allowed;
+    /* 不设 pointer-events:none：禁用按钮仍需响应悬停，以显示「不可用」原因 tooltip */
+}
+
+/* R107：标注激活态使用实色主题背景 + 白图标，与「图层行悬停背景（--bg-hover）」明显区分，避免视觉混淆 */
+.layer-item .layer-actions .label-btn.active {
+    color: #fff;
+    background: var(--accent-color);
+}
+
+.layer-item .layer-actions .label-btn.active:hover {
+    color: #fff;
+    background: var(--accent-hover);
+}
+
+/* ===== 空状态 ===== */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.empty-state .empty-icon {
+    font-size: 48px;
+    color: var(--border-color);
+    margin-bottom: 16px;
+}
+
+.empty-state .empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.empty-state .empty-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 220px;
+    line-height: 1.6;
+}
+
+.empty-state .empty-desc code {
+    background: var(--bg-hover);
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--accent-color);
+}
+
+/* ===== Panel Footer ===== */
+.panel-footer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    padding: 0;
+    min-height: 48px;
+}
+
+.footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+}
+
+.footer-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+
+.footer-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent-color);
+}
+
+.footer-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* R141：底部「移除全部数据集」常驻红色调，与数据集视图工具栏「移除全部」一致 */
+.footer-btn.danger {
+    color: var(--danger-color);
+}
+.footer-btn.danger:hover:not(:disabled) {
+    background: rgba(229, 72, 77, 0.1);
+    color: var(--danger-color);
+}
+
+button:focus-visible {
+    outline: 3px solid var(--accent-light);
+    outline-offset: 2px;
+}
+
+/* ===== Toast ===== */
+.toast-container {
+    position: fixed;
+    top: 64px;
+    right: auto;
+    /* R89：提示消息左对齐——容器锚定左侧、子项靠左排列 */
+    left: auto;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;   /* 左对齐 */
+    gap: 8px;
+    pointer-events: none;
+    max-width: 360px;
+}
+
+.toast {
+    /* R87：宽度跟随文本自适应（不再撑满整行） */
+    width: fit-content;
+    max-width: 100%;
+    align-self: flex-start;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 18px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+    animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+    backdrop-filter: blur(8px);
+}
+
+.toast.success { border-left: 3px solid var(--success-color); }
+.toast.error { border-left: 3px solid var(--danger-color); }
+.toast.info { border-left: 3px solid var(--accent-color); }
+.toast.warning { border-left: 3px solid var(--warning-color); }
+
+.toast i {
+    font-size: 18px;
+}
+.toast.success i { color: var(--success-color); }
+.toast.error i { color: var(--danger-color); }
+.toast.info i { color: var(--accent-color); }
+.toast.warning i { color: var(--warning-color); }
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(40px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.fade-out {
+    animation: fadeOut 0.25s ease forwards;
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+}
+
+/* ===== 禁用按钮样式 ===== */
+.footer-btn:disabled {
+    opacity: 0.3 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+}
+
+/* ===== R88：定位到「我的位置」脉冲动效标记 ===== */
+.locate-marker-wrap {
+    background: transparent;
+    border: none;
+}
+/* 中心实心点 */
+.locate-marker-dot {
+    position: absolute;
+    left: -7px;
+    top: -7px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4);
+}
+/* 向外扩散的脉冲圈 */
+.locate-marker-pulse {
+    position: absolute;
+    left: -14px;
+    top: -14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(79, 110, 247, 0.45);
+    animation: locatePulse 1.8s ease-out infinite;
+}
+@keyframes locatePulse {
+    0%   { transform: scale(0.6); opacity: 0.8; }
+    70%  { transform: scale(2.2); opacity: 0; }
+    100% { transform: scale(2.2); opacity: 0; }
+}
+[data-theme="dark"] .locate-marker-pulse { background: rgba(79, 110, 247, 0.6); }
