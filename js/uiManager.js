@@ -2245,7 +2245,7 @@ const UIManager = (function() {
             <div class="style-group">
                 <div class="style-group-title">文字</div>
                 <div class="style-group-fields">
-                    ${ColorUtils.labelColorField('textColor', '文字颜色', settings.textColor)}
+                    ${ColorUtils.labelColorField('textColor', '文字颜色', settings.textColor, labelLegendColor)}
                     <div class="style-field">
                         <label>不透明度</label>
                         <div class="style-control">
@@ -2271,7 +2271,7 @@ const UIManager = (function() {
             <div class="style-group">
                 <div class="style-group-title">扫边（描边）</div>
                 <div class="style-group-fields">
-                    ${ColorUtils.labelColorField('haloColor', '扫边颜色', settings.haloColor)}
+                    ${ColorUtils.labelColorField('haloColor', '扫边颜色', settings.haloColor, labelLegendColor)}
                     <div class="style-field">
                         <label>不透明度</label>
                         <div class="style-control">

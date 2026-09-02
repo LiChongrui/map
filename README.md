@@ -77,9 +77,7 @@ npx serve
 ├── data/
 │   ├── manifest.json       # 数据集清单（唯一的数据配置入口）
 │   └── <朝代目录>/*.geojson
-├── res/                    # favicon 等静态资源
-└── tools/
-    └── validate-data.js    # 数据校验脚本（见下）
+└── res/                    # favicon 等静态资源
 ```
 
 模块全部使用 IIFE 私有命名空间 + 全局单例对象，依赖靠 `index.html` 里的 `<script>` 顺序保证：
@@ -127,15 +125,12 @@ config → colorUtils → uiWidgets → placeSearch → measureTools
 
 分类的展示顺序与图标在 `js/dataScanner.js` 的 `CATEGORY_ORDER` 和 `js/uiManager.js` 的 `categoryIcon()` 中登记。
 
-### 数据校验
+### 改动数据后的自检
 
-改动数据后运行：
-
-```bash
-node tools/validate-data.js
-```
-
-会检查：manifest 结构完整性、必填字段、文件路径存在、GeoJSON 可解析、几何类型与 style 推断一致、坐标是否落在中国经纬度范围内、有无重复 id。输出问题清单与汇总，退出码非 0 表示有问题（可挂到 CI）。
+manifest 改完、或新增 GeoJSON 后，建议确认这几项：
+文件路径与 `files[].file` 对得上、GeoJSON 能被解析成 FeatureCollection、
+`style` 字段与几何类型匹配（面用 `fillColor`、线用 `lineColor`、点用 `pointColor`）、
+数据集名与图层 id 不重复。
 
 ---
 
@@ -163,7 +158,7 @@ CSS 按区块拆成 5 个文件，`index.html` 里的**引入顺序即级联顺�
 base.css → map.css → panel.css → responsive.css → overlays.css
 ```
 
-改动样式后建议跑一次视觉回归（见下），确认没有意外的样式回归。
+改动样式后建议同时看一眼亮色与暗色两种主题，避免只顾一边。
 
 ### sticky 吸顶与容器 padding
 
@@ -181,30 +176,4 @@ base.css → map.css → panel.css → responsive.css → overlays.css
 
 - **必须 HTTP 访问**（见「快速开始」），`file://` 下数据与搜索不可用
 - 图层对象常驻内存，不做回收；单次会话内连续加载全部数据集会占用较多内存
-- 测试需 `puppeteer-core` + 本机 Chrome（仓库不含 node_modules，`npm i puppeteer-core` 后可用）
 - 行政区划数据集目前只有几何与治所点，暂无分级填色等专题图能力
-
----
-
-## 回归测试
-
-```bash
-# 需先启动本地服务器（默认 http://localhost:8000）
-node tests/e2e.js
-
-# 指定地址
-APP_URL=http://localhost:3000 node tests/e2e.js
-```
-
-依赖 `puppeteer-core` + 本机 Chrome，会跑一遍核心交互（分类分组、添加/移除、搜索、折叠、批量操作、图层视图、取色器、移动端、暗色模式、file:// 启动指引），输出通过/失败汇总，退出码非 0 表示有失败或 console 报错。改动 UI 后建议跑一次。
-
-### 视觉回归
-
-```bash
-node tests/visual-regression.js --snapshot   # 改动样式前：拍基准图
-node tests/visual-regression.js --check      # 改动样式后：逐像素比对
-```
-
-覆盖 5 个场景（数据集视图 / 滚动吸顶 / 图层视图 / 暗色模式 / 移动端抽屉），
-基准图存 `tests/snapshots/`。地图瓦片与字体渲染存在极微小抖动，故允许
-「差异字节 ≤ 200 且单通道差值 ≤ 4」的容差；真正的样式回归通常是成百上千字节的差异，会被捕获。

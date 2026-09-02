@@ -266,9 +266,11 @@ const ColorUtils = (function() {
 
     // R111/R112：标注面板的颜色字段——与图例/样式配置使用同一套自定义取色器 UI（.color-field-btn + 弹层）
     // R112：移除「默认」按钮（颜色始终为具体取值，保持与本项目风格一致）
-    function labelColorField(key, label, value) {
-        // R114：文字颜色空值默认取图例色（labelLegendColor），扫边颜色无图例概念则默认白
-        const def = key === 'textColor' ? (labelLegendColor || '#334155') : '#ffffff';
+    // R170：legendColor 由调用方（标注面板）传入——图例色是标注面板的状态，
+    // 本模块若直接引用会造成跨模块隐式依赖（拆分时曾因此抛 labelLegendColor is not defined）。
+    function labelColorField(key, label, value, legendColor) {
+        // R114：文字颜色空值默认取图例色，扫边颜色无图例概念则默认白
+        const def = key === 'textColor' ? (legendColor || '#334155') : '#ffffff';
         const hex = normalizeHex(value || def);
         return `
             <div class="style-field">
